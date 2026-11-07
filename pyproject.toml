@@ -1,0 +1,9 @@
+[project]
+name = "bailey"
+version = "0.1.0"
+description = "CMCM 2026 Bailey Hall egress models"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

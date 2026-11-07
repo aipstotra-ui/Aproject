@@ -1,0 +1,71 @@
+  concert_cm: baseline 144s; sweeping 33 obstructions
+    C080->FOYER            known=176s  unknown=224s
+    C090->FOYER            known=178s  unknown=227s
+    C100->FOYER            known=176s  unknown=220s
+    FOYER->OUT_FRONT       known=144s
+    C025->OUT_P1           known=143s  unknown=172s
+    C050->OUT_P2           known=149s  unknown=170s
+    C130->OUT_P3           known=151s  unknown=170s
+    C155->OUT_P4           known=141s  unknown=172s
+    C000->V_W              known=144s  unknown=144s
+    V_W->OUT_NW            known=152s  unknown=195s
+    SE_W->V_W              known=142s  unknown=187s
+    C180->V_E              known=141s  unknown=144s
+    V_E->OUT_NE            known=152s  unknown=209s
+    SE_E->V_E              known=143s  unknown=211s
+    M1->C010               known=145s  unknown=144s
+    M2->C030               known=148s  unknown=164s
+    M3->C050               known=162s  unknown=159s
+    M4->C070               known=151s  unknown=222s
+    M5->C090               known=152s  unknown=179s
+    M6->C110               known=146s  unknown=199s
+    M7->C130               known=151s  unknown=162s
+    M8->C150               known=147s  unknown=165s
+    M9->C170               known=144s  unknown=144s
+    A1->M1                 known=136s  unknown=144s
+    A2->M3                 known=153s  unknown=174s
+    A3->M4                 known=219s  unknown=193s
+    A4->M6                 known=226s  unknown=221s
+    A5->M7                 known=156s  unknown=175s
+    A6->M9                 known=137s  unknown=144s
+    BS_W->C065             known=178s  unknown=181s
+    BN_W->V_W              known=144s  unknown=161s
+    BS_E->C115             known=177s  unknown=181s
+    BN_E->V_E              known=144s  unknown=161s
+  lecture: baseline 160s; sweeping 33 obstructions
+    C080->FOYER            known=175s  unknown=224s
+    C090->FOYER            known=178s  unknown=228s
+    C100->FOYER            known=175s  unknown=226s
+    FOYER->OUT_FRONT       known=160s
+    C025->OUT_P1           known=177s  unknown=189s
+    C050->OUT_P2           known=195s  unknown=189s
+    C130->OUT_P3           known=195s  unknown=189s
+    C155->OUT_P4           known=177s  unknown=188s
+    C000->V_W              known=160s  unknown=160s
+    V_W->OUT_NW            known=183s  unknown=183s
+    SE_W->V_W              known=160s  unknown=160s
+    C180->V_E              known=160s  unknown=160s
+    V_E->OUT_NE            known=183s  unknown=183s
+    SE_E->V_E              known=160s  unknown=160s
+    M1->C010               known=185s  unknown=160s
+    M2->C030               known=178s  unknown=203s
+    M3->C050               known=186s  unknown=161s
+    M4->C070               known=172s  unknown=244s
+    M5->C090               known=167s  unknown=198s
+    M6->C110               known=172s  unknown=246s
+    M7->C130               known=186s  unknown=161s
+    M8->C150               known=178s  unknown=201s
+    M9->C170               known=183s  unknown=160s
+    A1->M1                 known=183s  unknown=184s
+    A2->M3                 known=186s  unknown=185s
+    A3->M4                 known=238s  unknown=209s
+    A4->M6                 known=238s  unknown=225s
+    A5->M7                 known=186s  unknown=185s
+    A6->M9                 known=183s  unknown=184s
+    BS_W->C065             known=192s  unknown=214s
+    BN_W->V_W              known=183s  unknown=183s
+    BS_E->C115             known=192s  unknown=214s
+    BN_E->V_E              known=183s  unknown=183s
+  wrote results/model1_blocked.csv (200 rows)
+  wrote figures/model1_blocked_concert_cm.png
+  wrote figures/model1_blocked_lecture.png

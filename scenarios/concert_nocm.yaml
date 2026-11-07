@@ -1,0 +1,8 @@
+# Counterfactual for Q2: the same concert audience without Crowd Manager guidance
+# (slower to react, habit-dominated). Shows what the Crowd Managers are worth.
+name: concert_nocm
+question: Q2
+label: "Concert, no guidance"
+mode: emergency
+premovement: concert_nocm
+routing: {habit: 0.60, nearest: 0.40}

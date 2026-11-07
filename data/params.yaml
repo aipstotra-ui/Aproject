@@ -1,0 +1,59 @@
+# Physical and behavioural parameters shared by Model I (network flow) and Model II (CA).
+# Every number carries a source or is explicitly marked ASSUMPTION (=> include in sensitivity analysis).
+#
+# Main reference: SFPE Handbook of Fire Protection Engineering, 5th ed., ch. 59
+#   (Gwynne & Rosenbaum, "Employing the Hydraulic Model in Assessing Emergency Movement").
+#   Speed  S  = k (1 - a D)            [m/s],   a = 0.266 m^2/person, D = density [person/m^2]
+#   Specific flow Fs = S D = k D (1 - a D) [person/s per metre of EFFECTIVE width]
+#   Max specific flow Fsm = k / (4a) at D = 1/(2a) = 1.88 p/m^2
+#   Free (low-density) speed = 0.85 k   (SFPE uses D <= 0.54 p/m^2 as "free")
+
+hydraulic:
+  a: 0.266
+  k:                      # SFPE Table 59.2
+    level: 1.40           # corridor, aisle (flat), doorway, ramp
+    stair_7.5x10: 1.00    # riser 7.5 in / tread 10 in (assumed for Bailey's old stairs)
+    stair_7x11: 1.08
+    stair_6.5x12: 1.16
+  free_speed_factor: 0.85
+  d_max: 3.8              # jam density [p/m^2], SFPE / Fruin LoS F; used for queue storage
+
+# Boundary-layer deduction per side [m] (SFPE Table 59.1): effective width = clear width - 2 * layer
+boundary_layer:
+  stair_wall: 0.15
+  handrail: 0.09
+  corridor_wall: 0.20
+  door: 0.15
+  theatre_seating: 0.00
+  wide_concourse: 0.46
+
+# Edge "kinds" used in building.json -> which k and which boundary layer to apply
+edge_kinds:
+  aisle:      {k: level,        layer: theatre_seating, speed_factor: 0.80}  # ASSUMPTION: slower in seat rows/aisle steps
+  aisle_stair: {k: stair_7x11,  layer: handrail,        speed_factor: 1.00}  # orchestra -> mezzanine access steps
+  door:       {k: level,        layer: door,            speed_factor: 1.00}
+  corridor:   {k: level,        layer: corridor_wall,   speed_factor: 1.00}
+  level:      {k: level,        layer: wide_concourse,  speed_factor: 1.00}  # open rooms (foyer, vestibule)
+  stair:      {k: stair_7.5x10, layer: stair_wall,      speed_factor: 1.00}
+  stair_2lane: {k: stair_7.5x10, layer: handrail,       speed_factor: 1.00}  # foyer balcony stairs: centre barrier
+  hesitation: {k: level,        layer: theatre_seating, speed_factor: 1.00}  # virtual: discovery delay, no capacity limit
+
+# Pre-movement (time from alarm until a person starts moving) -- lognormal, truncated at quantile q_cap.
+# Sources: PD 7974-6:2019 (BSI) Table C.1 categories; Purser & Bensilum (2001); SFPE ch. 64.
+#   Category C (theatre/cinema, awake, unfamiliar, attended by trained staff, M2 alarm): first-occupant ~0.5 min,
+#   99th percentile ~ +2 min  -> lognormal with median ~30-45 s is a reasonable, mildly optimistic central case.
+#   Category A (offices/education, awake, familiar, drilled): first ~0.5 min, 99th ~ +1 min.
+premovement:
+  concert_cm:    {median: 35.0, sigma: 0.45, q_cap: 0.99, t_min: 5.0}   # ASSUMPTION within PD 7974-6 cat. C (staff present)
+  concert_nocm:  {median: 50.0, sigma: 0.55, q_cap: 0.99, t_min: 10.0}  # ASSUMPTION, used as counterfactual
+  lecture:       {median: 20.0, sigma: 0.50, q_cap: 0.99, t_min: 3.0}   # ASSUMPTION within cat. A (drilled students)
+  normal_exit:   {median: 15.0, sigma: 0.80, q_cap: 0.99, t_min: 0.0}   # ordinary departure (Q1, optional)
+
+# Time to realise an exit is blocked and turn around (unknown obstruction), per person [s]. ASSUMPTION.
+blocked_discovery_delay: 10.0
+
+# Numerical settings for Model I
+numerics:
+  dt: 1.0              # time step of fluid simulation and time-expanded LP [s]
+  horizon: 420         # [s] must exceed the slowest scenario
+  done_tolerance: 0.5  # "everyone out" when fewer than this many people remain (fluid model)

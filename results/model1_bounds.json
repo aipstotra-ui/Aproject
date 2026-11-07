@@ -1,0 +1,260 @@
+{
+ "concert_cm": {
+  "premovement": "concert_cm",
+  "t_min": 5.0,
+  "t_cap": 99.70388118119044,
+  "B1_last_starter": 127.57152824001398,
+  "max_free_travel": 27.86764705882353,
+  "cuts": {
+   "all": {
+    "people": 1329.0,
+    "cut_capacity_pps": 16.710526315789473,
+    "bound": 84.53070866141732,
+    "cut_groups": [
+     "foyer_inner",
+     "portico",
+     "vestibule_exit"
+    ],
+    "cut_edges": [
+     "C025->OUT_P1",
+     "C050->OUT_P2",
+     "C080->FOYER",
+     "C090->FOYER",
+     "C100->FOYER",
+     "C130->OUT_P3",
+     "C155->OUT_P4",
+     "V_E->OUT_NE",
+     "V_W->OUT_NW"
+    ]
+   },
+   "orchestra": {
+    "people": 527.0,
+    "cut_capacity_pps": 9.633082706766919,
+    "bound": 59.70730565095222,
+    "cut_groups": [
+     "access",
+     "stage_escape"
+    ],
+    "cut_edges": [
+     "A1->M1",
+     "A2->M3",
+     "A3->M4",
+     "A4->M6",
+     "A5->M7",
+     "A6->M9",
+     "SE_E->V_E",
+     "SE_W->V_W"
+    ]
+   },
+   "first_floor": {
+    "people": 1013.0,
+    "cut_capacity_pps": 16.710526315789473,
+    "bound": 65.6204724409449,
+    "cut_groups": [
+     "foyer_inner",
+     "portico",
+     "vestibule_exit"
+    ],
+    "cut_edges": [
+     "C025->OUT_P1",
+     "C050->OUT_P2",
+     "C080->FOYER",
+     "C090->FOYER",
+     "C100->FOYER",
+     "C130->OUT_P3",
+     "C155->OUT_P4",
+     "V_E->OUT_NE",
+     "V_W->OUT_NW"
+    ]
+   },
+   "balcony": {
+    "people": 316.0,
+    "cut_capacity_pps": 5.3007518796992485,
+    "bound": 64.61418439716311,
+    "cut_groups": [
+     "balc_foyer_stair",
+     "balc_stage_stair"
+    ],
+    "cut_edges": [
+     "BN_E->V_E",
+     "BN_W->V_W",
+     "BS_E->C115",
+     "BS_W->C065"
+    ]
+   }
+  },
+  "T_lower_bound": 127.57152824001398
+ },
+ "concert_nocm": {
+  "premovement": "concert_nocm",
+  "t_min": 10.0,
+  "t_cap": 179.74053453324416,
+  "B1_last_starter": 207.6081815920677,
+  "max_free_travel": 27.86764705882353,
+  "cuts": {
+   "all": {
+    "people": 1329.0,
+    "cut_capacity_pps": 16.710526315789473,
+    "bound": 89.53070866141732,
+    "cut_groups": [
+     "foyer_inner",
+     "portico",
+     "vestibule_exit"
+    ],
+    "cut_edges": [
+     "C025->OUT_P1",
+     "C050->OUT_P2",
+     "C080->FOYER",
+     "C090->FOYER",
+     "C100->FOYER",
+     "C130->OUT_P3",
+     "C155->OUT_P4",
+     "V_E->OUT_NE",
+     "V_W->OUT_NW"
+    ]
+   },
+   "orchestra": {
+    "people": 527.0,
+    "cut_capacity_pps": 9.633082706766919,
+    "bound": 64.70730565095222,
+    "cut_groups": [
+     "access",
+     "stage_escape"
+    ],
+    "cut_edges": [
+     "A1->M1",
+     "A2->M3",
+     "A3->M4",
+     "A4->M6",
+     "A5->M7",
+     "A6->M9",
+     "SE_E->V_E",
+     "SE_W->V_W"
+    ]
+   },
+   "first_floor": {
+    "people": 1013.0,
+    "cut_capacity_pps": 16.710526315789473,
+    "bound": 70.6204724409449,
+    "cut_groups": [
+     "foyer_inner",
+     "portico",
+     "vestibule_exit"
+    ],
+    "cut_edges": [
+     "C025->OUT_P1",
+     "C050->OUT_P2",
+     "C080->FOYER",
+     "C090->FOYER",
+     "C100->FOYER",
+     "C130->OUT_P3",
+     "C155->OUT_P4",
+     "V_E->OUT_NE",
+     "V_W->OUT_NW"
+    ]
+   },
+   "balcony": {
+    "people": 316.0,
+    "cut_capacity_pps": 5.3007518796992485,
+    "bound": 69.61418439716311,
+    "cut_groups": [
+     "balc_foyer_stair",
+     "balc_stage_stair"
+    ],
+    "cut_edges": [
+     "BN_E->V_E",
+     "BN_W->V_W",
+     "BS_E->C115",
+     "BS_W->C065"
+    ]
+   }
+  },
+  "T_lower_bound": 207.6081815920677
+ },
+ "lecture": {
+  "premovement": "lecture",
+  "t_min": 3.0,
+  "t_cap": 64.00148015885924,
+  "B1_last_starter": 91.86912721768277,
+  "max_free_travel": 27.86764705882353,
+  "cuts": {
+   "all": {
+    "people": 1329.0,
+    "cut_capacity_pps": 16.710526315789473,
+    "bound": 82.53070866141732,
+    "cut_groups": [
+     "foyer_inner",
+     "portico",
+     "vestibule_exit"
+    ],
+    "cut_edges": [
+     "C025->OUT_P1",
+     "C050->OUT_P2",
+     "C080->FOYER",
+     "C090->FOYER",
+     "C100->FOYER",
+     "C130->OUT_P3",
+     "C155->OUT_P4",
+     "V_E->OUT_NE",
+     "V_W->OUT_NW"
+    ]
+   },
+   "orchestra": {
+    "people": 527.0,
+    "cut_capacity_pps": 9.633082706766919,
+    "bound": 57.70730565095222,
+    "cut_groups": [
+     "access",
+     "stage_escape"
+    ],
+    "cut_edges": [
+     "A1->M1",
+     "A2->M3",
+     "A3->M4",
+     "A4->M6",
+     "A5->M7",
+     "A6->M9",
+     "SE_E->V_E",
+     "SE_W->V_W"
+    ]
+   },
+   "first_floor": {
+    "people": 1013.0,
+    "cut_capacity_pps": 16.710526315789473,
+    "bound": 63.62047244094489,
+    "cut_groups": [
+     "foyer_inner",
+     "portico",
+     "vestibule_exit"
+    ],
+    "cut_edges": [
+     "C025->OUT_P1",
+     "C050->OUT_P2",
+     "C080->FOYER",
+     "C090->FOYER",
+     "C100->FOYER",
+     "C130->OUT_P3",
+     "C155->OUT_P4",
+     "V_E->OUT_NE",
+     "V_W->OUT_NW"
+    ]
+   },
+   "balcony": {
+    "people": 316.0,
+    "cut_capacity_pps": 5.3007518796992485,
+    "bound": 62.614184397163115,
+    "cut_groups": [
+     "balc_foyer_stair",
+     "balc_stage_stair"
+    ],
+    "cut_edges": [
+     "BN_E->V_E",
+     "BN_W->V_W",
+     "BS_E->C115",
+     "BS_W->C065"
+    ]
+   }
+  },
+  "T_lower_bound": 91.86912721768277
+ }
+}
