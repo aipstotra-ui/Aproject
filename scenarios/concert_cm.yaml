@@ -7,3 +7,4 @@ label: "Concert, Crowd Managers"
 mode: emergency
 premovement: concert_cm
 routing: {assigned: 0.60, habit: 0.25, nearest: 0.15}
+crowd_managers: true    # Model II places the 6 CMs (data/params.yaml ca.cm_positions)

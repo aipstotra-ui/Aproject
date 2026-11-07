@@ -57,3 +57,39 @@ numerics:
   dt: 1.0              # time step of fluid simulation and time-expanded LP [s]
   horizon: 420         # [s] must exceed the slowest scenario
   done_tolerance: 0.5  # "everyone out" when fewer than this many people remain (fluid model)
+
+# ------------------------------------------------------------------ Model II: floor-field cellular automaton
+# Burstedde et al. (2001) Physica A 295; Kirchner & Schadschneider (2002) Physica A 312;
+# Kirchner, Nishinari & Schadschneider (2003) PRE 67 (friction mu).
+ca:
+  cell: 0.5                 # [m] cell size; one person per cell (max 4 p/m^2)
+  # one time step = cell / free level speed (0.85 * 1.40 = 1.19 m/s) -> ~0.42 s
+  k_s: 3.0                  # coupling to the static (distance-to-exit) field; CALIBRATED in scripts/run_model2.py calibrate
+  k_d: 0.5                  # coupling to the dynamic (trail) field, ordinary agents
+  k_d_herd: 2.5             # coupling for herding agents
+  dyn_decay: 0.3            # trail decay per step
+  friction: 0.67            # mu: probability that a conflict blocks every contender; CALIBRATED to SFPE Fsm (run_model2.py calibrate)
+  swap_prob: 0.5            # ASSUMPTION: two blocked agents facing each other exchange cells (counter-flow rule)
+  congestion_beta: 3.0      # tactical awareness: walking cost x (1 + beta * local density); 0 = blind to queues
+  field_refresh: 4.0        # [s] how often the congestion-aware fields are recomputed
+  seat_speed: 0.80          # speed factor inside seating (matches Model I 'aisle' kind)
+  stair_speed: 0.714        # k_stair / k_level = 1.00 / 1.40 (SFPE)
+  rational_reeval: 5.0      # [s] how often rational agents reconsider their exit
+  rational_switch_gain: 5.0 # [s] minimum predicted gain to switch exit (hysteresis)
+  herding_share: 0.10       # ASSUMPTION: share of agents with strong trail-following
+  # obstruction discovery and information spread
+  see_radius: 3.0           # [m] an uninformed agent discovers an obstruction within this distance
+  info_spread: 0.10         # per-step probability of learning about the obstruction from an informed neighbour
+  # Crowd Managers (6 required for 1,329 seats): positions in Model I node ids / polar placements
+  cm_radius: 6.0            # [m] voice reach while the crowd moves past
+  cm_switch_rate: 0.30      # [1/s] rate at which an unguided agent in reach adopts the CM's instruction (ASSUMPTION)
+  cm_radio_delay: 30.0      # [s] CMs learn of an UNKNOWN obstruction by radio this long after the alarm (ASSUMPTION)
+  cm_positions:             # (layer, polar r [m], theta [deg]); layer 0 = first floor, 1 = balcony
+    - [0, 18.0, 30]
+    - [0, 18.0, 70]
+    - [0, 18.0, 110]
+    - [0, 18.0, 150]
+    - [1, 19.0, 62]
+    - [1, 19.0, 118]
+  horizon: 600.0            # [s]
+  runs: 30                  # Monte Carlo replications per scenario

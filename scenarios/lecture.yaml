@@ -6,3 +6,4 @@ label: "Lecture, drilled students"
 mode: emergency
 premovement: lecture
 routing: {nearest: 0.60, habit: 0.40}
+crowd_managers: false

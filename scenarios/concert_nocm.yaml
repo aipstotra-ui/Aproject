@@ -6,3 +6,4 @@ label: "Concert, no guidance"
 mode: emergency
 premovement: concert_nocm
 routing: {habit: 0.60, nearest: 0.40}
+crowd_managers: false
