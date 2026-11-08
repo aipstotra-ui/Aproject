@@ -6,6 +6,9 @@ We draw the hall as a grid of small squares and let every person take one step a
 The narrow doorways (the stairs, the mezzanine doors and the foyer doors) let people through at the rates we measured in our own bottleneck simulations.
 Each step is partly random, so we repeat every evacuation 30 times.
 
+The simulation tells us **how many people go through each doorway** (the same counts behind the heat map).
+From those counts and each doorway's flow rate we then **calculate when the last person gets out** (rule 10).
+
 We simulate the two **emergency** cases from our data:
 
 | Case | Who | Reaction time | How people pick an exit |
@@ -29,7 +32,7 @@ It takes about 3–4 minutes. The results go into the `output/` folder.
 | `simulation.py` | The model: the map, distances, people, choosing an exit, moving step by step, and the doorway limits from our data. |
 | `main.py` | Runs each case 30 times, prints a summary and draws the figures. |
 | `data/` | Our measured bottleneck data: `stairs.csv`, `corridor.csv`, `foyer_doors.csv`. |
-| `output/` | `map.png`, `people_left.png`, `heatmap.png`, `flow_check.png`, `results.csv` |
+| `output/` | `map.png`, `escape_time.png`, `doorway_times.png`, `heatmap.png`, `flow_check.png`, `results.csv` |
 
 ## Our bottleneck data
 
@@ -88,7 +91,7 @@ People can step in 8 directions, but never into a wall, and never diagonally bet
 
 - **Where they start:**
   - 527 people sit in random orchestra seats and 486 in random mezzanine seats.
-  - The 316 balcony people come down 4 staircases. Each staircase is a waiting line, and people step off it at the measured stair rate.
+  - The 316 balcony people come down 4 staircases. Each staircase is a waiting line, and people step off it at the staircase's flow rate (see "Doorways without data" below).
 - **Behaviour type:** each person gets one by a random draw, using the percentages for the case (see the table at the top).
 - **Reaction time:** everyone starts moving after 5 s (students) or 10 s (concert). Balcony people need another 16 s to get down their stairs.
 
@@ -158,29 +161,65 @@ Swaps never happen inside a doorway, so the ticket machines still decide who goe
 Each run uses a different random seed (0–29), and the same seed always gives exactly the same run.
 The program also checks every step that no square ever holds two people.
 
+### 10. Calculating when the last person gets out
+
+While people walk, the simulation writes down **which doorways each person goes through**, in order.
+For example: seat → stair 3 → mezz door 4 → foyer door 1 → FRONT.
+From that we calculate the escape time (`calculated_escape_time` in `simulation.py`), working outwards from the seats:
+
+1. **Count** how many people went through each doorway, and which doorways feed which (stair 3 feeds mezz door 4, and so on).
+2. For every doorway, find:
+   - **earliest**: when the first person can reach it. That's the reaction time plus the walk from their seat, or the earliest time of the doorway before it plus the walk between the two.
+   - **finish**: when its last person is through. This is the later of:
+     - **earliest + people ÷ flow rate** (everyone squeezing through at the doorway's rate), and
+     - **when its last person arrives** (the doorway before it finishing, plus the walk). Nobody can pass a doorway before they get there.
+3. The time the last person leaves the hall is the **latest finish of any exit**.
+
+**Flow rates:**
+- **Doorways with data:** they use the run's measured rate: stairs, mezzanine doors, and the foyer doors (split by the data's door counts).
+- **Doorways without data:** the side exits, the front doors, the stage-side openings and the balcony stairs use
+
+  `rate = the mezzanine doors' measured flow per metre × the doorway's width`
+
+  The widths, estimated from the drawings, are in `NO_DATA_WIDTHS`.
+
+The step-by-step simulation's own finishing time is still printed and saved, for comparison (`simulated_time_s` in `results.csv`).
+
 ## Results (30 runs per case)
 
 | | Case 3: students, emergency | Case 4: concert, emergency |
 |---|---|---|
-| Average time until the last person is out | **191 s** | **243 s** |
-| Spread between runs (standard deviation) | 6 s | 7 s |
-| Fastest / slowest run | 180 s / 204 s | 231 s / 259 s |
-| Runs within the 180 s limit | **1 of 30** | **0 of 30** |
+| **Calculated time until the last person is out** | **143 s** | **190 s** |
+| Spread between runs (standard deviation) | 7 s | 17 s |
+| Fastest / slowest run | 132 s / 159 s | 169 s / 221 s |
+| Runs within the 180 s limit | **30 of 30** | **11 of 30** |
+| Doorways that finish last | P2 and P3 (138 s), FRONT (132 s) | FRONT (190 s), foyer doors 2 and 3 (182 s, 177 s) |
+| Step-by-step simulation's own time (for comparison) | 190 s | 245 s |
 
 Average number of people per exit:
 
 | Case | FRONT | NW | NE | P1 | P2 | P3 | P4 |
 |---|---|---|---|---|---|---|---|
-| 3: students | 546 | 63 | 61 | 76 | 258 | 256 | 68 |
-| 4: concert | 639 | 106 | 107 | 112 | 128 | 127 | 110 |
+| 3: students | 546 | 63 | 61 | 76 | 258 | 256 | 69 |
+| 4: concert | 639 | 106 | 107 | 112 | 128 | 128 | 110 |
 
-![people left](output/people_left.png)
+![escape time](output/escape_time.png)
 
-**People still inside over time.**
-The line is the average over the 30 runs; the band shows where 90% of the runs fall.
+**Calculated time for the last person to get out.** One dot per run, with the average marked.
 
-- **Students:** they start sooner and use the side exits more, so they finish about 50 s before the concert audience. They still miss 180 s in almost every run.
-- **Concert:** the last 200 people take the longest, queueing for the foyer route.
+- **Students:** always within 180 s. They react faster and 60% use the nearest exit, so the hall empties through all exits. The side doors P2 and P3 next to the foyer finish last; about 255 people each use them.
+- **Concert:** about a third of the runs make 180 s. The foyer route decides it: 639 people go out the front.
+
+![doorway times](output/doorway_times.png)
+
+**When each doorway lets its last person through** (average over the runs; the label shows how many people used it).
+The longest bar decides the escape time.
+
+- **Concert:**
+  - The 3 foyer doors and the FRONT exit finish last.
+  - Before them, mezzanine doors 4 and 6, the ones next to the foyer, take about 140 people each and finish at about 170 s.
+  - The far mezzanine doors (1, 2, 8, 9) carry fewer than 45 people and are done by about 85 s.
+- **Students:** the load is spread more evenly, and the side doors P2 and P3 finish last.
 
 ![heat map](output/heatmap.png)
 
@@ -202,16 +241,23 @@ The simulation never goes above the measured rate, so the ticket machines work. 
 - **Supply:** the foyer doors only get the people that the mezzanine doors (about 1 per second each) and the balcony stairs pass on.
 - **Room behind the door:** a doorway can only take the next person when the square behind it is free.
 
-**Why it is slower than our earlier, simpler version (137 s for the concert):**
+**Why the calculated time is shorter than the step-by-step simulation's own time:**
+In the calculation every doorway works at its full measured rate while it has people waiting.
+In the step-by-step simulation the doorways only reach about 60–80% of those rates, because people sometimes wobble, and the square behind a doorway must be free before the next person can enter.
+So the calculated time is what our measured rates allow, and the simulation's own time is a slower, more pessimistic estimate.
+
+**What decides the time:**
 Our data says each mezzanine door and stair opening lets through only about 1 person per second.
-In the full hall, people don't spread evenly over the 9 mezzanine doors. The doors closest to the foyer get about 150 people each, against about 125 in our data's setup, so they decide the time.
-This points to where guidance (ushers or LED signs) could help most: spreading people over the mezzanine doors.
+People don't spread evenly over the 9 mezzanine doors: the doors closest to the foyer get about 140 people each, while the far ones get fewer than 45.
+This points to where guidance (ushers or LED signs) could help most: spreading people over the mezzanine doors and away from the foyer.
 
 ## Simplifications
 
 - **Separate data:** the doorway rates come from separate small simulations of one bottleneck each. We use them as the most a doorway can let through.
-- **Balcony stairs:** they also use the orchestra-stair rate. That's our assumption, because we have no data for them; set `USE_STAIR_DATA_FOR_BALCONY = False` to switch it off.
-- **Doorways without data:** the side exits (P1–P4, NW, NE) and the stage-side openings have no data, so they have no ticket machine.
+- **Doorways without data:** the side exits (P1–P4, NW, NE), the front doors, the stage-side openings and the balcony stairs use the mezzanine doors' measured flow per metre × their estimated width.
+  - In the step-by-step simulation, only the balcony stairs get a ticket machine with that rate.
+  - The others are limited only by the squares, but they do use the rate in the calculation.
+- **The calculation** assumes each doorway works at its full rate while people wait, and uses the shortest walk between doorways. It doesn't add the time a doorway sits idle because the doorway before it is slow, except through the "last person arrives" rule.
 - **Map:** one floor, simplified shapes, door widths estimated from the CMCM drawings. The balcony itself isn't drawn.
 - **Speed and reaction:** everyone walks at the same speed, and reaction time is fixed and the same for everyone.
 - **Ushers:** modelled only by how they spread the guided 60%. They don't move.

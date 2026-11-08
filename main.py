@@ -3,9 +3,13 @@ Run the Bailey Hall simulation for the two emergency cases, many times each, and
 
     python main.py
 
+The main result is the CALCULATED time for the last person to get out (simulation.calculated_escape_time):
+people per doorway (counted in the simulation) / the doorway's flow rate, chained from the seats to the exits.
+
 Results go into the folder output/:
-    map.png          the hall as the computer sees it (doorways with data marked)
-    people_left.png  people still inside over time, one colour per case
+    map.png           the hall as the computer sees it (doorways with data marked)
+    escape_time.png   calculated time for the last person to get out, every run, per case
+    doorway_times.png when each doorway lets its last person through (which doorway decides the time)
     heatmap.png      how crowded each square was, one panel per case
     flow_check.png   busiest flow through the stairs / mezzanine doors / foyer doors: simulation vs our data
     results.csv      one line per run
@@ -20,6 +24,7 @@ matplotlib.use("Agg")                     # draw into files, no window needed
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import ListedColormap
+from matplotlib.patches import Patch
 
 import simulation as sim
 
@@ -99,31 +104,61 @@ def draw_map(hall):
     plt.close(fig)
 
 
-def draw_people_left(results, total_people):
-    """People still inside over time: average line per case, light band = middle 90 % of runs."""
-    times = np.arange(0, 401, 1)
-    fig, ax = plt.subplots(figsize=(8.5, 4.8))
-    for case, colour in zip(sim.CASES, CASE_COLOURS):
-        curves = []
-        for out_times in results[case["case"]]["out_times"]:
-            out_times = sorted(out_times)
-            curves.append([total_people - np.searchsorted(out_times, t, side="right") for t in times])
-        curves = np.array(curves)
-        low, high = np.percentile(curves, 5, axis=0), np.percentile(curves, 95, axis=0)
-        mean_time = statistics.mean(results[case["case"]]["times"])
-        ax.fill_between(times, low, high, color=colour, alpha=0.18, linewidth=0)
-        ax.plot(times, curves.mean(axis=0), color=colour, linewidth=2.2,
-                label=f"Case {case['case']}: {case['name']} ({mean_time:.0f} s)")
+def draw_escape_times(results):
+    """One dot per run: the calculated time for the last person to get out, per case."""
+    fig, ax = plt.subplots(figsize=(8, 3.6))
+    for row, (case, colour) in enumerate(zip(sim.CASES, CASE_COLOURS)):
+        times = results[case["case"]]["times"]
+        wobble = np.linspace(-0.12, 0.12, len(times))         # spread the dots a little so they don't overlap
+        ax.scatter(times, row + wobble, color=colour, s=22, alpha=0.8)
+        mean_time = statistics.mean(times)
+        ax.plot([mean_time, mean_time], [row - 0.28, row + 0.28], color="#222222", linewidth=2)
+        ax.text(mean_time, row + 0.33, f"average {mean_time:.0f} s", ha="center", fontsize=9)
     ax.axvline(TIME_LIMIT, color="#c0392b", linestyle="--", linewidth=1.2)
-    ax.text(TIME_LIMIT + 4, total_people * 0.08, "180 s limit", color="#c0392b")
-    ax.set_xlim(0, 400)
-    ax.set_ylim(0, total_people * 1.03)
-    ax.set_xlabel("seconds since the start")
-    ax.set_ylabel("people still inside")
-    ax.set_title("How fast the hall empties (line = average, band = 90 % of runs)", loc="left", fontweight="bold")
-    ax.legend(loc="upper right", frameon=False, fontsize=8.5)
-    ax.grid(alpha=0.3)
-    fig.savefig(os.path.join(OUTPUT_FOLDER, "people_left.png"), dpi=160, bbox_inches="tight")
+    ax.text(TIME_LIMIT + 2, -0.45, "180 s limit", color="#c0392b", fontsize=9)
+    ax.set_yticks(range(len(sim.CASES)), [f"Case {c['case']}: {c['name']}" for c in sim.CASES])
+    ax.set_ylim(-0.6, len(sim.CASES) - 0.4)
+    ax.set_xlabel("seconds until the last person is out (calculated)")
+    ax.set_title(f"Time for the last person to get out ({NUMBER_OF_RUNS} runs per case, one dot per run)",
+                 loc="left", fontweight="bold")
+    ax.grid(axis="x", alpha=0.3)
+    fig.savefig(os.path.join(OUTPUT_FOLDER, "escape_time.png"), dpi=160, bbox_inches="tight")
+    plt.close(fig)
+
+
+def draw_doorway_times(results):
+    """For each doorway: average time when its last person goes through. The longest bar decides."""
+    kinds = [("stair", "#9db7d5", "stairs"), ("stage", "#9db7d5", None), ("balcony", "#b8a9e0", "balcony stairs"),
+             ("mezz door", "#1f4e8c", "mezzanine doors"), ("foyer door", "#e8833a", "foyer doors"),
+             ("", "#2e9e5b", "exits")]
+
+    def colour_of(doorway):
+        for start, colour, _ in kinds:
+            if doorway.startswith(start):
+                return colour
+        return "#2e9e5b"
+
+    fig, axes = plt.subplots(1, len(sim.CASES), figsize=(13, 7.5), sharex=True)
+    for ax, case in zip(axes, sim.CASES):
+        finishes = results[case["case"]]["doorway_finish"]
+        names = sorted(finishes, key=lambda d: (sim.doorway_level(d), d))
+        averages = [statistics.mean(finishes[d]) for d in names]
+        people = [statistics.mean(results[case["case"]]["doorway_people"][d]) for d in names]
+        ax.barh(range(len(names)), averages, color=[colour_of(d) for d in names])
+        for i, (avg, n) in enumerate(zip(averages, people)):
+            ax.text(avg + 2, i, f"{n:.0f} people", va="center", fontsize=7)
+        ax.set_yticks(range(len(names)), names, fontsize=8)
+        ax.invert_yaxis()
+        ax.axvline(TIME_LIMIT, color="#c0392b", linestyle="--", linewidth=1)
+        ax.set_title(f"Case {case['case']}: {case['name']}", loc="left", fontsize=11, fontweight="bold")
+        ax.set_xlabel("seconds until the doorway's last person is through")
+        ax.grid(axis="x", alpha=0.3)
+    legend_boxes = [Patch(color=colour, label=label) for start, colour, label in kinds if label]
+    fig.legend(handles=legend_boxes, loc="lower center", ncol=5, frameon=False, bbox_to_anchor=(0.5, -0.02))
+    fig.suptitle("When each doorway lets its last person through (average over runs)", x=0.02, ha="left",
+                 fontsize=13, fontweight="bold")
+    fig.tight_layout(rect=(0, 0.04, 1, 0.97))
+    fig.savefig(os.path.join(OUTPUT_FOLDER, "doorway_times.png"), dpi=150, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -183,7 +218,8 @@ def main():
     rows = []
     for case in sim.CASES:
         number = case["case"]
-        results[number] = {"times": [], "out_times": [], "density": np.zeros(hall["grid"].shape),
+        results[number] = {"times": [], "simulated_times": [], "density": np.zeros(hall["grid"].shape),
+                           "doorway_finish": {}, "doorway_people": {},
                            "exits": {name: 0 for name in sim.EXIT_NAMES},
                            "flows": {kind: [] for kind, _, _ in PLACES}}
         print(f"\nCase {number}: {case['name']}")
@@ -192,11 +228,16 @@ def main():
             people, times_occupied, steps, gate_times = sim.run_once(run, hall, case, rates)
             out_times = [p["out_time"] for p in people if p["out_time"] is not None]
             stuck = total_people - len(out_times)
-            last_out = max(out_times) if stuck == 0 else float("inf")
+            simulated_last_out = max(out_times) if stuck == 0 else float("inf")
+            # the main result: calculated from people per doorway / flow rate, chained to the exits
+            last_out, doorways = sim.calculated_escape_time(people, hall, rates)
 
             r = results[number]
             r["times"].append(last_out)
-            r["out_times"].append(out_times)
+            r["simulated_times"].append(simulated_last_out)
+            for doorway, info in doorways.items():
+                r["doorway_finish"].setdefault(doorway, []).append(info["finish"])
+                r["doorway_people"].setdefault(doorway, []).append(info["people"])
             r["density"] += times_occupied / steps / NUMBER_OF_RUNS
             per_exit = {name: 0 for name in sim.EXIT_NAMES}
             for p in people:
@@ -206,10 +247,12 @@ def main():
             flows = simulated_flows(gate_times)
             for kind in flows:
                 r["flows"][kind].append(flows[kind])
+            slowest = max(doorways, key=lambda d: doorways[d]["finish"] if sim.doorway_level(d) < 4 else -1)
             rows.append({"case": number, "case_name": case["name"], "run": run,
-                         "evacuation_time_s": round(last_out, 1), "people_stuck": stuck, **per_exit,
+                         "calculated_time_s": round(last_out, 1), "simulated_time_s": round(simulated_last_out, 1),
+                         "slowest_inner_doorway": slowest, "people_stuck": stuck, **per_exit,
                          **{f"busiest_flow_{kind.replace(' ', '_')}": round(flows[kind]["busiest"], 3) for kind in flows}})
-            print(f"  run {run + 1:2d}: everyone out after {last_out:6.1f} s")
+            print(f"  run {run + 1:2d}: last person out after {last_out:6.1f} s (calculated)")
 
     # ---- summary ----
     print("\n================ summary ================")
@@ -218,8 +261,12 @@ def main():
         times = r["times"]
         under = sum(1 for t in times if t <= TIME_LIMIT)
         print(f"\nCase {case['case']}: {case['name']}")
-        print(f"  evacuation time : {statistics.mean(times):.1f} s on average (spread {statistics.stdev(times):.1f} s, "
-              f"fastest {min(times):.1f}, slowest {max(times):.1f})")
+        print(f"  last person out : {statistics.mean(times):.1f} s on average (spread {statistics.stdev(times):.1f} s, "
+              f"fastest {min(times):.1f}, slowest {max(times):.1f})  [calculated]")
+        print(f"  (the step-by-step simulation itself took {statistics.mean(r['simulated_times']):.1f} s on average)")
+        finishes = {d: statistics.mean(v) for d, v in r["doorway_finish"].items()}
+        last_three = sorted(finishes, key=finishes.get, reverse=True)[:3]
+        print("  doorways that finish last: " + ", ".join(f"{d} {finishes[d]:.0f} s" for d in last_three))
         print(f"  within {TIME_LIMIT} s     : {under} of {NUMBER_OF_RUNS} runs")
         print("  people per exit : " + ", ".join(f"{n} {r['exits'][n] / NUMBER_OF_RUNS:.0f}" for n in sim.EXIT_NAMES))
         for kind, place, title in PLACES:
@@ -234,7 +281,8 @@ def main():
         writer.writeheader()
         writer.writerows(rows)
     draw_map(hall)
-    draw_people_left(results, total_people)
+    draw_escape_times(results)
+    draw_doorway_times(results)
     draw_heatmaps(hall, results)
     draw_flow_check(results, data)
     print(f"\nfigures and results.csv saved in {OUTPUT_FOLDER}/")

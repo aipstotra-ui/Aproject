@@ -20,6 +20,9 @@ Main rules (numbered like the code below):
   7. Bottlenecks use our measured data: each stair (orchestra -> mezzanine), mezzanine door and
      foyer door has a "ticket machine" that hands out tickets at the measured flow rate.
      You may only step into the doorway if a ticket is available.
+  8. The final time is CALCULATED (calculated_escape_time): from the doorways each person used,
+     we count the people per doorway, divide by the doorway's flow rate, and chain the doorways
+     from the seats to the exits to find when the last person is completely out.
 """
 import csv
 import heapq
@@ -49,7 +52,16 @@ CASES = [
 # our measured bottleneck data (one file per place, 4 cases x 500 runs each)
 DATA_FOLDER = "data"
 DATA_FILES = {"stairs": "stairs.csv", "corridor": "corridor.csv", "foyer": "foyer_doors.csv"}
-USE_STAIR_DATA_FOR_BALCONY = True   # balcony stairs also use the measured stair rate (our assumption)
+# Doorways we have no data for get: (measured flow per metre at the mezzanine doors) x (their width).
+# Widths in metres (estimated from the CMCM drawings).
+NO_DATA_WIDTHS = {
+    "P1": 1.6, "P2": 1.6, "P3": 1.6, "P4": 1.6,          # portico side doors
+    "NW": 1.5, "NE": 1.5,                                # side exits next to the stage
+    "FRONT": 5 * 1.8,                                    # the 5 front doors of the foyer together
+    "stage W": 1.5, "stage E": 1.5,                      # openings from the orchestra to the stage passages
+    "balcony NW stair": 1.3, "balcony W foyer stair": 2.0,
+    "balcony E foyer stair": 2.0, "balcony NE stair": 1.3,
+}
 SWAP_CHANCE = 0.5          # two stuck people facing each other squeeze past each other (swap) with this chance
 QUEUE_RADIUS = 4.0         # people within 4 m of a doorway count as its queue
 MAP_UPDATE_TIME = 5.0      # every 5 s people look at the queues again and update their route
@@ -141,10 +153,12 @@ def make_hall():
     grid[row, col] is WALL, FLOOR, SEAT or EXIT.
     exit_of_square[(row, col)] is the name of the exit for every EXIT square.
     gate_of_square[(row, col)] is the name of the doorway ("gate") for every square of a
-    stair opening, mezzanine door or foyer door; these are the places we have data for."""
+    stair opening, mezzanine door or foyer door; these are the places we have data for.
+    stage_opening_of_square[(row, col)] marks the two openings from the orchestra to the stage passages."""
     grid = np.zeros((ROWS, COLUMNS), dtype=int)       # everything starts as wall
     exit_of_square = {}
     gate_of_square = {}
+    stage_opening_of_square = {}
 
     for row in range(ROWS):
         for col in range(COLUMNS):
@@ -190,6 +204,8 @@ def make_hall():
                     kind = FLOOR                      # passage from the stage corners to the side exits
                 if y < 0.5 and (11.0 <= abs(x) <= 12.5 or MEZZ_WALL_END <= abs(x) <= CORRIDOR_END):
                     kind = FLOOR                      # openings from the orchestra / corridor into it
+                if y < 0.5 and 11.0 <= abs(x) <= 12.5:
+                    stage_opening_of_square[(row, col)] = "stage W" if x < 0 else "stage E"
                 if 0.5 <= y < 2.0 and CORRIDOR_END < abs(x) <= CORRIDOR_END + 0.5:
                     kind = EXIT
                     exit_name = "NW" if x < 0 else "NE"   # side exits next to the stage
@@ -199,7 +215,7 @@ def make_hall():
                 exit_of_square[(row, col)] = exit_name
             if kind != FLOOR:
                 gate_of_square.pop((row, col), None)  # a later rule turned it into something else
-    return grid, exit_of_square, gate_of_square
+    return grid, exit_of_square, gate_of_square, stage_opening_of_square
 
 
 def neighbours(grid, row, col):
@@ -330,15 +346,15 @@ def create_people(grid, case):
 
     people = []
     for seat in random.sample(orchestra_seats, ORCHESTRA_PEOPLE):
-        people.append({"square": seat, "start": reaction, "stair": None})
+        people.append({"square": seat, "start": reaction, "stair": None, "start_square": seat})
     for seat in random.sample(mezzanine_seats, MEZZANINE_PEOPLE):
-        people.append({"square": seat, "start": reaction, "stair": None})
+        people.append({"square": seat, "start": reaction, "stair": None, "start_square": seat})
     for name, how_many, where in BALCONY_STAIRS:
         landing = stair_landing(grid, where)
         for _ in range(how_many):
             # balcony people are not on the floor yet: they wait in the stair's queue
-            people.append({"square": None, "start": reaction + STAIR_WALK_TIME,
-                           "stair": landing})
+            people.append({"square": None, "start": reaction + STAIR_WALK_TIME, "stair": landing,
+                           "stair_name": "balcony " + name, "start_square": landing})
 
     # give everyone a type: guided, habit or nearest
     for person in people:
@@ -351,6 +367,7 @@ def create_people(grid, case):
             person["type"] = "nearest"
         person["out_time"] = None
         person["exit_used"] = None
+        person["path"] = []                  # the doorways this person goes through, in order
     return people
 
 
@@ -444,6 +461,7 @@ def rates_for_run(data, case_number, run):
         "stair": float(stairs["Flow_people_per_s"]),
         "mezz door": float(corridor["Flow_people_per_s"]),
         "foyer door": [total_flow * count / sum(door_counts) for count in door_counts],
+        "per metre": float(corridor["Specific_Flow_people_per_m_s"]),   # for doorways without data
     }
 
 
@@ -455,6 +473,14 @@ def gate_rate(gate, rates):
     if gate.startswith("mezz door"):
         return rates["mezz door"]
     return rates["stair"]
+
+
+def doorway_rate(doorway, rates):
+    """Flow rate (people per second) of any doorway: from our data if we have it,
+    otherwise the mezzanine doors' rate per metre x the doorway's width."""
+    if doorway in NO_DATA_WIDTHS:
+        return rates["per metre"] * NO_DATA_WIDTHS[doorway]
+    return gate_rate(doorway, rates)
 
 
 def swap_stuck_pairs(ready, moved, route_maps, neighbour_lists, gate_of_square):
@@ -494,6 +520,7 @@ def run_once(seed, hall, case, rates):
     grid = hall["grid"]
     exit_of_square = hall["exit_of_square"]
     gate_of_square = hall["gate_of_square"]
+    stage_opening_of_square = hall["stage_opening_of_square"]
     neighbour_lists = hall["neighbours"]
     distance = hall["distance"]
 
@@ -512,9 +539,11 @@ def run_once(seed, hall, case, rates):
             occupied[person["square"]] = 1
     times_occupied = np.zeros((ROWS, COLUMNS))
     stair_queues = {}                                      # landing square -> people waiting on the stairs
+    stair_name = {}                                        # landing square -> name of that staircase
     for person in people:
         if person["stair"] is not None:
             stair_queues.setdefault(person["stair"], []).append(person)
+            stair_name[person["stair"]] = person["stair_name"]
 
     time = 0.0
     step = 0
@@ -535,16 +564,16 @@ def run_once(seed, hall, case, rates):
         for gate in gates:
             tickets[gate] = min(1.0, tickets[gate] + gate_rate(gate, rates) * TIME_STEP)
         for landing in stair_queues:
-            if USE_STAIR_DATA_FOR_BALCONY:
-                stair_tickets[landing] = min(1.0, stair_tickets[landing] + rates["stair"] * TIME_STEP)
-            else:
-                stair_tickets[landing] = 1.0
+            # balcony stairs have no data: rate per metre x stair width
+            stair_rate = doorway_rate(stair_name[landing], rates)
+            stair_tickets[landing] = min(1.0, stair_tickets[landing] + stair_rate * TIME_STEP)
 
         # balcony people step off their staircase when the landing square is free (and a ticket is there)
         for landing, waiting in stair_queues.items():
             if waiting and waiting[0]["start"] <= time and not occupied[landing] and stair_tickets[landing] >= 1:
                 person = waiting.pop(0)
                 person["square"] = landing
+                person["path"].append(stair_name[landing])
                 occupied[landing] = 1
                 stair_tickets[landing] -= 1
 
@@ -570,11 +599,16 @@ def run_once(seed, hall, case, rates):
                     continue                               # no ticket: wait this step
                 tickets[gate] -= 1
                 gate_times[gate].append(time)              # remember when someone went through
+                winner["path"].append(gate)
+            opening = stage_opening_of_square.get(target)
+            if opening is not None and stage_opening_of_square.get(winner["square"]) != opening:
+                winner["path"].append(opening)             # went through a stage-side opening
             occupied[winner["square"]] = 0
             if grid[target] == EXIT:                       # stepped outside
                 winner["square"] = None
                 winner["out_time"] = time + TIME_STEP
                 winner["exit_used"] = exit_of_square[target]
+                winner["path"].append(exit_of_square[target])
                 people_inside -= 1
             else:
                 winner["square"] = target
@@ -595,7 +629,7 @@ def run_once(seed, hall, case, rates):
 def setup():
     """Build everything that is the same in every run: the map, neighbours, door widths and
     distance maps. Returns them together in one dictionary."""
-    grid, exit_of_square, gate_of_square = make_hall()
+    grid, exit_of_square, gate_of_square, stage_opening_of_square = make_hall()
     neighbour_lists = make_neighbour_lists(grid)
     distance = {}
     for name in EXIT_NAMES:
@@ -616,6 +650,118 @@ def setup():
             if close and in_front and square not in squares:
                 area.append(square)
         gate_queue_area[gate] = area
+    # every doorway (with or without data) and its squares, plus a distance map to it
+    doorway_squares = {}
+    for lookup in (gate_of_square, stage_opening_of_square, exit_of_square):
+        for square, name in lookup.items():
+            doorway_squares.setdefault(name, []).append(square)
+    for name, _, where in BALCONY_STAIRS:
+        doorway_squares["balcony " + name] = [stair_landing(grid, where)]
+    doorway_distance = {}
+    for name, squares in doorway_squares.items():
+        doorway_distance[name] = distance_from_squares(neighbour_lists, squares)
+
     return {"grid": grid, "exit_of_square": exit_of_square, "gate_of_square": gate_of_square,
+            "stage_opening_of_square": stage_opening_of_square,
             "neighbours": neighbour_lists, "distance": distance, "widths": door_widths(grid, exit_of_square),
-            "gate_queue_area": gate_queue_area}
+            "gate_queue_area": gate_queue_area, "doorway_squares": doorway_squares,
+            "doorway_distance": doorway_distance}
+
+
+# ======================================================================== 8. calculated escape time
+def distance_from_squares(neighbour_lists, start_squares):
+    """Steps from every square to the nearest of `start_squares` (the same wave as distance_to_exit)."""
+    far_away = 10 ** 6
+    distance = np.full((ROWS, COLUMNS), far_away)
+    queue = deque()
+    for square in start_squares:
+        distance[square] = 0
+        queue.append(square)
+    while queue:
+        square = queue.popleft()
+        for nxt in neighbour_lists[square]:
+            if distance[nxt] == far_away:
+                distance[nxt] = distance[square] + 1
+                queue.append(nxt)
+    return distance
+
+
+def doorway_level(doorway):
+    """How far out a doorway is: 1 = first doorway after the seats, ..., 4 = exits."""
+    if doorway.startswith(("stair", "stage", "balcony")):
+        return 1
+    if doorway.startswith("mezz door"):
+        return 2
+    if doorway.startswith("foyer door"):
+        return 3
+    return 4                                              # the exits
+
+
+def calculated_escape_time(people, hall, rates):
+    """The time until the last person is completely out of the building, calculated from:
+       * how many people went through each doorway (counted in the simulation)
+       * each doorway's flow rate (our data, or rate per metre x width)
+       * walking times between doorways
+    We go from the seats outwards. For every doorway:
+       earliest = when the first people can reach it
+       finish   = the later of
+                    earliest + people / rate          (everyone squeezing through at the doorway's rate)
+                    when the last person reaches it   (they can't pass before they arrive)
+       People reach a doorway either straight from their seat (start time + walk), or through the
+       doorway before it (that doorway's times + the walk between the two).
+    The answer is the latest finish of any exit.
+    Returns (time in seconds, details per doorway)."""
+    distance = hall["doorway_distance"]
+    squares = hall["doorway_squares"]
+
+    # ---- 1. clean paths, count people per doorway, and which doorway feeds which ----
+    count = {}
+    feeders = {}                     # doorway -> doorways people came through just before it
+    first_arrivals = {}              # doorway -> arrival times of people who came straight from their seat
+    for person in people:
+        path = list(dict.fromkeys(person["path"]))        # each doorway once, in the order first used
+        for doorway in path:
+            count[doorway] = count.get(doorway, 0) + 1
+        for before, after in zip(path[:-1], path[1:]):
+            # only links that go outwards (a few people wander back and forth at the stage corners)
+            if doorway_level(before) < doorway_level(after):
+                feeders.setdefault(after, set()).add(before)
+        if path:
+            first = path[0]
+            walk = distance[first][person["start_square"]] * TIME_STEP
+            first_arrivals.setdefault(first, []).append(person["start"] + walk)
+
+    # ---- 2. walking time between two doorways (shortest walk between them) ----
+    def walk_between(before, after):
+        return min(distance[after][square] for square in squares[before]) * TIME_STEP
+
+    # ---- 3. earliest arrival and finish of every doorway, working outwards ----
+    earliest = {}
+    finish = {}
+
+    def work_out(doorway):
+        if doorway in finish:
+            return
+        earliest_times = []
+        last_arrivals = []
+        if doorway in first_arrivals:
+            earliest_times.append(min(first_arrivals[doorway]))
+            last_arrivals.append(max(first_arrivals[doorway]))
+        for before in feeders.get(doorway, ()):
+            work_out(before)
+            walk = walk_between(before, doorway)
+            earliest_times.append(earliest[before] + walk)
+            last_arrivals.append(finish[before] + walk)
+        earliest[doorway] = min(earliest_times)
+        squeeze_time = count[doorway] / doorway_rate(doorway, rates)
+        finish[doorway] = max(earliest[doorway] + squeeze_time, max(last_arrivals))
+
+    for doorway in count:
+        work_out(doorway)
+
+    details = {}
+    for doorway in count:
+        details[doorway] = {"people": count[doorway], "rate": doorway_rate(doorway, rates),
+                            "earliest": earliest[doorway], "finish": finish[doorway]}
+    last_out = max(finish[name] for name in EXIT_NAMES if name in finish)
+    return last_out, details
