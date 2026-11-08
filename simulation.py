@@ -50,10 +50,10 @@ CASES = [
      "reaction": 5.0, "guided": 0.0, "habit": 0.40, "nearest": 0.60},
     {"case": "4", "data_case": 4, "name": "Concert, emergency",
      "reaction": 10.0, "guided": 0.60, "habit": 0.25, "nearest": 0.15},
-    # Crowd Managers: we assume they get everyone to follow the ushers' plan (100 % guided),
-    # which spreads people over all exits as efficiently as possible
+    # Crowd Managers: they halve the people who ignore the ushers (40 % -> 20 %),
+    # keeping the same habit : nearest ratio (25 : 15). Not 100 %: some people never listen.
     {"case": "4 + CM", "data_case": 4, "name": "Concert, emergency, Crowd Managers",
-     "reaction": 10.0, "guided": 1.0, "habit": 0.0, "nearest": 0.0},
+     "reaction": 10.0, "guided": 0.80, "habit": 0.125, "nearest": 0.075},
 ]
 
 # our measured bottleneck data (one file per place, 4 cases x 500 runs each)

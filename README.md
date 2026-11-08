@@ -15,9 +15,9 @@ We simulate the two **emergency** cases from our data, plus the concert with Cro
 |---|---|---|---|---|
 | 3 | Students (lecture) | case 3 | 5 s | 60% nearest exit, 40% habit (front foyer) |
 | 4 | Concert audience | case 4 | 10 s | 60% follow the ushers, 25% habit, 15% nearest exit |
-| 4 + CM | Concert audience, with Crowd Managers | case 4 | 10 s | **100% follow the ushers** |
+| 4 + CM | Concert audience, with Crowd Managers | case 4 | 10 s | **80% follow the ushers**, 12.5% habit, 7.5% nearest |
 
-For the Crowd Manager scenario we assume the Crowd Managers get everyone to follow the ushers' plan, which spreads people over all the exits as efficiently as possible (rule 4).
+For the Crowd Manager scenario we assume the Crowd Managers **halve the number of people who ignore the ushers** (40% → 20%). The rest keep the concert's habit : nearest ratio of 25 : 15. We don't use 100%: in a real evacuation some people never listen, and Question 4 (barriers and LEDs) needs room to improve on it. Because the true share is unknown, we also run a sweep from 60% to 100% guided (see below).
 Everything else is the same as case 4: the same measured doorway rates, and the same reaction time.
 
 ## How to run
@@ -35,8 +35,9 @@ It takes about 3–4 minutes. The results go into the `output/` folder.
 |---|---|
 | `simulation.py` | The model: the map, distances, people, choosing an exit, moving step by step, and the doorway limits from our data. |
 | `main.py` | Runs each case 30 times, prints a summary and draws the figures. |
+| `sweep.py` | Runs the concert with 60%, 70%, 80%, 90% and 100% guided (about 9 minutes). |
 | `data/` | Our measured bottleneck data: `stairs.csv`, `corridor.csv`, `foyer_doors.csv`. |
-| `output/` | `map.png`, `escape_time.png`, `doorway_times.png`, `heatmap.png`, `flow_check.png`, `results.csv` |
+| `output/` | `map.png`, `escape_time.png`, `doorway_times.png`, `heatmap.png`, `flow_check.png`, `results.csv`, `guided_sweep.png`, `guided_sweep.csv` |
 
 ## Our bottleneck data
 
@@ -193,12 +194,12 @@ The step-by-step simulation's own finishing time is still printed and saved, for
 
 | | Case 3: students | Case 4: concert | Case 4 + CM: concert with Crowd Managers |
 |---|---|---|---|
-| **Calculated time until the last person is out** | **143 s** | **190 s** | **157 s** |
-| Spread between runs (standard deviation) | 7 s | 17 s | 12 s |
-| Fastest / slowest run | 132 s / 159 s | 169 s / 221 s | 136 s / 179 s |
-| Runs within the 180 s limit | **30 of 30** | **11 of 30** | **30 of 30** |
-| Doorways that finish last | P2 and P3 (138 s), FRONT (132 s) | FRONT (190 s), foyer door 2 (182 s) | FRONT (157 s), foyer door 2 (149 s) |
-| Step-by-step simulation's own time (for comparison) | 190 s | 245 s | 209 s |
+| **Calculated time until the last person is out** | **143 s** | **190 s** | **175 s** |
+| Spread between runs (standard deviation) | 7 s | 17 s | 13 s |
+| Fastest / slowest run | 132 s / 159 s | 169 s / 221 s | 155 s / 206 s |
+| Runs within the 180 s limit | **30 of 30** | **11 of 30** | **21 of 30** |
+| Doorways that finish last | P2 and P3 (138 s), FRONT (132 s) | FRONT (190 s), foyer door 2 (182 s) | FRONT (175 s), foyer door 2 (167 s) |
+| Step-by-step simulation's own time (for comparison) | 190 s | 245 s | 227 s |
 
 Average number of people per exit:
 
@@ -206,7 +207,7 @@ Average number of people per exit:
 |---|---|---|---|---|---|---|---|
 | 3: students | 546 | 63 | 61 | 76 | 258 | 256 | 69 |
 | 4: concert | 639 | 106 | 107 | 112 | 128 | 128 | 110 |
-| 4 + CM: concert with Crowd Managers | 534 | 147 | 147 | 149 | 101 | 101 | 149 |
+| 4 + CM: concert with Crowd Managers | 587 | 127 | 127 | 131 | 114 | 114 | 129 |
 
 ![escape time](output/escape_time.png)
 
@@ -214,7 +215,7 @@ Average number of people per exit:
 
 - **Students:** always within 180 s. They react faster and 60% use the nearest exit, so the hall empties through all exits. The side doors P2 and P3 next to the foyer finish last; about 255 people each use them.
 - **Concert:** only about a third of the runs make 180 s. The foyer route decides it: 639 people go out the front.
-- **Concert with Crowd Managers:** **33 s faster on average (157 s vs 190 s), and every run makes 180 s.** The ushers send about 100 fewer people to the front, and more to the less-used exits (NW, NE, P1, P4: about 148 each instead of about 110). The slowest run (179 s) only just makes the limit, though.
+- **Concert with Crowd Managers:** **15 s faster on average (175 s vs 190 s), and 21 of 30 runs make 180 s instead of 11.** About 50 fewer people go out the front, and the less-used exits (NW, NE, P1, P4) get about 128 each instead of about 110. The slowest runs still miss the limit, which leaves room for barriers and LEDs (Question 4).
 
 ![doorway times](output/doorway_times.png)
 
@@ -225,8 +226,8 @@ The longest bar decides the escape time.
   - The 3 foyer doors and the FRONT exit finish last.
   - Before them, mezzanine doors 4 and 6, the ones next to the foyer, take about 140 people each and finish at about 170 s.
 - **Concert with Crowd Managers:**
-  - Mezzanine doors 4 and 6 drop to about 110 people each, and the front exit to 534 people.
-  - The foyer route still finishes last, but about 30 s earlier.
+  - Fewer people queue at mezzanine doors 4 and 6, and the front exit drops to 587 people.
+  - The foyer route still finishes last, but about 15 s earlier.
 - **Students:** the load is spread more evenly, and the side doors P2 and P3 finish last.
 
 ![heat map](output/heatmap.png)
@@ -259,7 +260,22 @@ So the calculated time is what our measured rates allow, and the simulation's ow
 Our data says each mezzanine door and stair opening lets through only about 1 person per second.
 People don't spread evenly over the 9 mezzanine doors: the doors closest to the foyer get about 140 people each, while the far ones get fewer than 45.
 This points to where guidance (ushers or LED signs) could help most: spreading people over the mezzanine doors and away from the foyer.
-The Crowd Manager scenario confirms it: with everyone following the ushers' plan, the concert gets out about 33 s faster.
+The Crowd Manager scenario confirms it: with 80% instead of 60% following the ushers' plan, the concert gets out about 15 s faster.
+
+### How much does following the plan matter? (`python sweep.py`)
+
+The share of people who follow Crowd Managers is a guess, so we ran the concert emergency with 60% to 100% guided (30 runs each; the non-guided people split 25 : 15 between habit and nearest).
+
+| People guided | 60% (no CM) | 70% | **80% (our CM case)** | 90% | 100% (best case) |
+|---|---|---|---|---|---|
+| Calculated time (average ± spread) | 190 ± 17 s | 183 ± 16 s | **175 ± 13 s** | 166 ± 14 s | 158 ± 12 s |
+| Runs within 180 s | 11 of 30 | 12 of 30 | **21 of 30** | 24 of 30 | 30 of 30 |
+
+![guided sweep](output/guided_sweep.png)
+
+- Every extra 10% of people who follow the plan saves about **8 s**.
+- The **average** drops below 180 s from about 75% guided, but **every** run makes it only at 100%.
+- So Crowd Managers alone help, but they aren't enough on their own: Question 4 (barriers and LEDs) has to close the remaining gap.
 
 ## Simplifications
 
@@ -270,6 +286,6 @@ The Crowd Manager scenario confirms it: with everyone following the ushers' plan
 - **The calculation** assumes each doorway works at its full rate while people wait, and uses the shortest walk between doorways. It doesn't add the time a doorway sits idle because the doorway before it is slow, except through the "last person arrives" rule.
 - **Map:** one floor, simplified shapes, door widths estimated from the CMCM drawings. The balcony itself isn't drawn.
 - **Speed and reaction:** everyone walks at the same speed, and reaction time is fixed and the same for everyone.
-- **Ushers / Crowd Managers:** modelled only through the exit each guided person is given (the ushers' spread-out plan). They don't stand in the hall or talk to people on the way. In the Crowd Manager scenario we assume everyone follows them (100% guided), which is the best case.
+- **Ushers / Crowd Managers:** modelled only through the exit each guided person is given (the ushers' spread-out plan). They don't stand in the hall or talk to people on the way. In the Crowd Manager scenario we assume 80% follow them (an assumption; `sweep.py` shows 60–100%).
 
 All the settings are named constants at the top of `simulation.py`.
