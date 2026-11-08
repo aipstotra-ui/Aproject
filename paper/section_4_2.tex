@@ -1,0 +1,132 @@
+\subsection{Route Selection Model}
+In this route selection model, we think of people as pieces moving along a chess board. Each individual has their own square, and moves on each turn. People determine which square to move to via a scoring system, meaning people move to the higher scored tiles with a higher probability. The bottleneck flow simulation tells us how fast each opening lets people through, while this model tells us how many people go to each opening and when they get there. Combining the two gives the time the last person leaves the hall.
+
+\subsubsection{The Hall as a Grid}
+We divided the floor of Bailey Hall into squares of 0.5 m $\times$ 0.5 m, which is about the space one standing person needs. The hall is 50 m wide and 34 m deep, so the grid has $100 \times 68$ squares. Each square is either a wall, floor, seat, or exit. The shapes were drawn at the real size of the hall from the given schematic diagram: the orchestra seats form a half circle of 13 m, a barrier with 6 stair openings separates them from the mezzanine seats, and a wall with 9 mezzanine doors leads into a 2.4 m wide curved corridor. The corridor leads to the 3 foyer doors and the 4 side exits (P1--P4), and two more exits (NW and NE) sit next to the stage. The 5 front doors of the foyer are treated as one exit (FRONT), so the hall has 7 exits in total.
+
+\begin{figure}[H]
+\centering
+  \includegraphics[height=6.5cm]{map.png}
+  \caption{The hall as a grid of 0.5 m squares. Orange squares are the openings that use our measured flow rates}
+  \label{fig:map}
+\end{figure}
+
+We placed 527 people in random orchestra seats and 486 in random mezzanine seats. The 316 balcony people come down 4 staircases, which we modelled as waiting lines that release people onto the floor. Everyone starts moving after a fixed reaction time: 5 s for students, who have done fire drills, and 10 s for concert audiences. Balcony people need another 16 s to walk down their stairs.
+
+\subsubsection{Choosing an Exit}
+Following Assumption 1, every person is randomly given one of three types before the evacuation starts:
+\begin{itemize}
+    \item \textbf{Habit:} goes back the way they came in, through the foyer and out the FRONT exit,
+    \item \textbf{Nearest:} goes to the exit with the shortest walking distance,
+    \item \textbf{Guided:} follows the Crowd Managers, who send each person to the exit where they would get out soonest, counting the people already sent there.
+\end{itemize}
+To find the walking distance, the computer counts how many steps every square is away from each exit. It starts at the exit and spreads out one step at a time, like a wave. People can step in 8 directions, but never through walls or chairs (Assumption 2). The ratios of the three types for each case are shown in Table \ref{tab:cases}.
+
+\begin{table}[H]
+    \centering
+    \small
+    \caption{The three cases of the route selection model}
+    \begin{tabular}{l|c|c|c|c|c}
+        \toprule
+        Case & Flow data used & Reaction time & Guided & Habit & Nearest \\
+        \midrule
+        Lecture, emergency & Case 3 & 5 s & 0\% & 40\% & 60\% \\
+        Concert, emergency & Case 4 & 10 s & 60\% & 25\% & 15\% \\
+        Concert, emergency, with Crowd Managers & Case 4 & 10 s & 80\% & 12.5\% & 7.5\% \\
+        \bottomrule
+    \end{tabular}
+    \label{tab:cases}
+\end{table}
+
+Students know the building from fire drills, so most of them use the nearest exit. Concert audiences are unfamiliar with the hall and many go back the way they came in \cite{imanishi}. For the case with Crowd Managers, we assumed that the Crowd Managers halve the number of people who ignore the plan, from 40\% to 20\%, while keeping the same ratio between habit and nearest. We did not use 100\% because some people never follow instructions in a real evacuation. The effect of this choice is tested in the sensitivity analysis.
+
+\subsubsection{Moving Square by Square}
+Each turn lasts 0.42 s, the time it takes to walk one square at 1.19 m/s. On each turn, every person who is ready scores the free squares around them, and staying in place, with the weight
+\begin{equation}
+    W = \exp\left(-\alpha \, \Delta d - \beta \, n\right),
+\end{equation}
+where $\Delta d$ is the change in the number of steps to their exit, $n$ is the number of people around that square, $\alpha = 3$, and $\beta = 0.3$. A step one square closer to the exit is about 20 times more likely than a step that keeps the same distance, and squares surrounded by people are less attractive. The person then picks one square at random, with chances in proportion to the weights. This means people usually walk toward their exit, but sometimes step sideways around a crowd, like real people do.
+
+If two or more people pick the same square, one of them, chosen at random, gets it and the others wait for the next turn. If two stuck people face each other and each wants the other's square, they swap places half of the time. Without this rule, two streams walking in opposite directions in the corridor blocked each other forever in one of our test runs. Every 5 s, people also look at the queues in front of the openings. A crowded opening then counts as farther away by the time one would wait in its queue, so people may switch to a less busy door.
+
+\subsubsection{Connecting the Two Models}
+The stair openings, the mezzanine doors, and the foyer doors each use the flow rate $Q$ from our bottleneck flow simulation. Every opening works like a ticket machine: it prints tickets at the rate $Q$, and a person may only step into the opening if a ticket is ready. Run $i$ of each case uses run $i$ of the bottleneck data, so the variation between the 500 bottleneck runs carries into this model. For the openings we did not simulate (the side exits, the front doors, and the balcony stairs), we used the specific flow $q$ of the mezzanine door multiplied by the width of the opening.
+
+While people walk, the model records which openings each person goes through, in order, for example: seat $\rightarrow$ stair 3 $\rightarrow$ mezzanine door 4 $\rightarrow$ foyer door 1 $\rightarrow$ FRONT. From these counts we calculated when each opening lets its last person through, working outwards from the seats. For opening $k$,
+\begin{equation}
+    F_k = \max\left( E_k + \frac{N_k}{Q_k}, \; L_k \right),
+\end{equation}
+where $N_k$ is the number of people who used opening $k$, $Q_k$ is its flow rate, $E_k$ is when the first person can reach it, and $L_k$ is when the last person reaches it. Both $E_k$ and $L_k$ come either from the reaction time plus the walk from the seats, or from the opening before it plus the walk between the two. In other words, an opening finishes either when everyone has squeezed through at its measured rate, or when its last person arrives, whichever is later. The evacuation time $T$ is the latest finish of any exit. We ran each case 30 times with a different random seed.
+
+\subsubsection{Results}
+\begin{table}[H]
+    \centering
+    \small
+    \caption{Evacuation time $T$ over 30 runs per case}
+    \begin{tabular}{l|c|c|c|c}
+        \toprule
+        Case & Mean $T$ & Std.\ dev. & Fastest / slowest & Runs under 180 s \\
+        \midrule
+        Lecture, emergency & 142.6 s & 7.0 s & 132.0 s / 158.9 s & 30 / 30 \\
+        Concert, emergency & 189.6 s & 16.6 s & 168.6 s / 221.4 s & 11 / 30 \\
+        Concert, with Crowd Managers & 175.0 s & 13.4 s & 155.1 s / 205.7 s & 21 / 30 \\
+        \bottomrule
+    \end{tabular}
+    \label{tab:results}
+\end{table}
+
+\begin{figure}[H]
+\centering
+  \includegraphics[height=5cm]{escape_time.png}
+  \caption{Evacuation time of every run. The dashed line is the 180 s limit}
+  \label{fig:escape}
+\end{figure}
+
+The lecture is evacuated within 180 s in every run. Students react faster, and since 60\% of them go to the nearest exit, the hall empties through all 7 exits at once. The concert, however, only meets the limit in about a third of the runs. With Crowd Managers, the concert becomes 15 s faster on average and 21 of the 30 runs meet the limit, but the slowest runs still take more than 200 s.
+
+\begin{table}[H]
+    \centering
+    \small
+    \caption{Average number of people leaving through each exit}
+    \begin{tabular}{l|ccccccc}
+        \toprule
+        Case & FRONT & NW & NE & P1 & P2 & P3 & P4 \\
+        \midrule
+        Lecture, emergency & 546 & 63 & 61 & 76 & 258 & 256 & 69 \\
+        Concert, emergency & 639 & 106 & 107 & 112 & 128 & 128 & 110 \\
+        Concert, with Crowd Managers & 587 & 127 & 127 & 131 & 114 & 114 & 129 \\
+        \bottomrule
+    \end{tabular}
+    \label{tab:exits}
+\end{table}
+
+Table \ref{tab:exits} shows why. In the concert, almost half of the audience (639 people) leaves through the foyer, because both the habit group and many guided people head there. Crowd Managers move about 50 people away from the foyer to the less used exits NW, NE, P1, and P4.
+
+\begin{figure}[H]
+\centering
+  \includegraphics[width=\textwidth]{doorway_times.png}
+  \caption{When each opening lets its last person through. The longest bar decides the evacuation time}
+  \label{fig:doorway}
+\end{figure}
+
+Figure \ref{fig:doorway} shows which opening decides the evacuation time. In both concert cases, the foyer doors and the FRONT exit finish last. Before them, the mezzanine doors next to the foyer (doors 4 and 6) take about 140 people each in the concert, while the doors far from the foyer take fewer than 45. Since each mezzanine door lets only about 1 person through per second, each of these two doors needs over 2 minutes to let everyone through. For students, the load is spread more evenly, and the side exits P2 and P3, which about 255 people each use, finish last.
+
+\begin{figure}[H]
+\centering
+  \includegraphics[width=\textwidth]{heatmap.png}
+  \caption{Share of time each square was occupied, averaged over 30 runs}
+  \label{fig:heatmap}
+\end{figure}
+
+The heat maps in Figure \ref{fig:heatmap} show where people crowd. The darkest queues form in front of the mezzanine doors next to the foyer and in the corridor in front of the 3 foyer doors. In the concert, these queues are the longest. With Crowd Managers, they become shorter, and more people walk through the far mezzanine doors toward the side exits. For students, queues also form at the mezzanine doors near P2 and P3, since many of them go to the nearest exit.
+
+\begin{figure}[H]
+\centering
+  \includegraphics[width=\textwidth]{flow_check.png}
+  \caption{Flow through each type of opening: our measured data compared with the route selection model}
+  \label{fig:flowcheck}
+\end{figure}
+
+To make sure the two models fit together, we compared the flow through each type of opening with the measured data (Figure \ref{fig:flowcheck}). The flow never exceeds the measured rate, which shows that the ticket machines work. It also never quite reaches it, because an opening can only take the next person when the square behind it is free, and the foyer doors only receive the people the mezzanine doors pass on. For this reason, the time at which the last person actually leaves in the square-by-square simulation is longer than $T$: 190 s for the lecture, 245 s for the concert, and 227 s with Crowd Managers. We use $T$ as our main result because it uses the full measured flow rates, while the simulated time is a more pessimistic estimate.
+
+Overall, the evacuation of Bailey Hall is limited by the foyer route. Each mezzanine door and stair opening lets through only about 1 person per second, and people do not spread evenly over the 9 mezzanine doors. This shows that the most effective improvement is to move people away from the foyer and toward the far mezzanine doors and side exits, which is what we test with temporary barriers in the next section.
