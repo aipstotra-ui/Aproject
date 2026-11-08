@@ -16,8 +16,15 @@ Main rules (numbered like the code below):
   5. Every time step, each person chooses a square at random, but some squares are much more
      likely than others (see choose_square). If two people choose the same square,
      one of them (picked at random) gets it and the others wait.
+  6. Two stuck people who face each other (each wants the other's square) swap places half of the time.
+  7. Bottlenecks use our measured data: each stair (orchestra -> mezzanine), mezzanine door and
+     foyer door has a "ticket machine" that hands out tickets at the measured flow rate.
+     You may only step into the doorway if a ticket is available.
 """
+import csv
+import heapq
 import math
+import os
 import random
 from collections import deque
 
@@ -28,13 +35,24 @@ CELL = 0.5                 # size of one square in metres
 WALK_SPEED = 1.19          # normal walking speed in metres per second
 TIME_STEP = CELL / WALK_SPEED   # time to walk one square: about 0.42 s
 
-REACTION_TIME = 10.0       # seconds everyone waits before starting to move (concert)
 STAIR_WALK_TIME = 16.0     # extra seconds for balcony people to walk down their stairs
 MAX_TIME = 600.0           # stop the simulation after this many seconds
 
-SHARE_GUIDED = 0.60        # concert with ushers: 60 % follow the ushers
-SHARE_HABIT = 0.25         #                      25 % go back to the front foyer
-SHARE_NEAREST = 0.15       #                      15 % go to the nearest exit
+# The situations we simulate: the two emergency cases of our data (case 3 and case 4).
+# "reaction" = seconds before people start to move.
+# guided = follow the ushers, habit = back to the front foyer, nearest = closest exit.
+CASES = [
+    {"case": 3, "name": "Students, emergency", "reaction": 5.0, "guided": 0.0, "habit": 0.40, "nearest": 0.60},
+    {"case": 4, "name": "Concert, emergency", "reaction": 10.0, "guided": 0.60, "habit": 0.25, "nearest": 0.15},
+]
+
+# our measured bottleneck data (one file per place, 4 cases x 500 runs each)
+DATA_FOLDER = "data"
+DATA_FILES = {"stairs": "stairs.csv", "corridor": "corridor.csv", "foyer": "foyer_doors.csv"}
+USE_STAIR_DATA_FOR_BALCONY = True   # balcony stairs also use the measured stair rate (our assumption)
+SWAP_CHANCE = 0.5          # two stuck people facing each other squeeze past each other (swap) with this chance
+QUEUE_RADIUS = 4.0         # people within 4 m of a doorway count as its queue
+MAP_UPDATE_TIME = 5.0      # every 5 s people look at the queues again and update their route
 
 PULL = 3.0                 # how strongly people want to get closer to their exit
 CROWD = 0.3                # how strongly people avoid crowded squares
@@ -110,12 +128,23 @@ def near_opening(x, y, radius, angles, width):
 
 
 # ======================================================================== 1. the map
+def which_opening(x, y, radius, angles, width):
+    """Number (1, 2, ...) of the opening that (x, y) belongs to, or None."""
+    for number, angle in enumerate(angles, start=1):
+        if near_opening(x, y, radius, [angle], width):
+            return number
+    return None
+
+
 def make_hall():
-    """Return (grid, exit_of_square).
+    """Return (grid, exit_of_square, gate_of_square).
     grid[row, col] is WALL, FLOOR, SEAT or EXIT.
-    exit_of_square[(row, col)] is the name of the exit for every EXIT square."""
+    exit_of_square[(row, col)] is the name of the exit for every EXIT square.
+    gate_of_square[(row, col)] is the name of the doorway ("gate") for every square of a
+    stair opening, mezzanine door or foyer door; these are the places we have data for."""
     grid = np.zeros((ROWS, COLUMNS), dtype=int)       # everything starts as wall
     exit_of_square = {}
+    gate_of_square = {}
 
     for row in range(ROWS):
         for col in range(COLUMNS):
@@ -128,18 +157,24 @@ def make_hall():
                 if r < ORCHESTRA_RADIUS:
                     kind = SEAT                       # orchestra
                 elif r < BARRIER_END:
-                    if near_opening(x, y, ORCHESTRA_RADIUS, ACCESS_STAIRS, 1.2):
-                        kind = FLOOR                  # opening in the barrier
+                    number = which_opening(x, y, ORCHESTRA_RADIUS, ACCESS_STAIRS, 1.2)
+                    if number:
+                        kind = FLOOR                  # opening in the barrier (stairs up)
+                        gate_of_square[(row, col)] = f"stair {number}"
                 elif r < MEZZANINE_END:
                     kind = SEAT                       # mezzanine
                 elif r < MEZZ_WALL_END:
-                    if near_opening(x, y, MEZZANINE_END, MEZZANINE_DOORS, 1.6):
+                    number = which_opening(x, y, MEZZANINE_END, MEZZANINE_DOORS, 1.6)
+                    if number:
                         kind = FLOOR                  # mezzanine door
+                        gate_of_square[(row, col)] = f"mezz door {number}"
                 elif r < CORRIDOR_END:
                     kind = FLOOR                      # corridor
                 elif r < OUTER_WALL_END:
-                    if near_opening(x, y, CORRIDOR_END, FOYER_DOORS, 1.8):
+                    number = which_opening(x, y, CORRIDOR_END, FOYER_DOORS, 1.8)
+                    if number:
                         kind = FLOOR                  # door into the foyer
+                        gate_of_square[(row, col)] = f"foyer door {number}"
                     for name, angle in PORTICO_DOORS.items():
                         if near_opening(x, y, CORRIDOR_END, [angle], 1.6):
                             kind, exit_name = EXIT, name      # portico side exit
@@ -162,7 +197,9 @@ def make_hall():
             grid[row, col] = kind
             if kind == EXIT:
                 exit_of_square[(row, col)] = exit_name
-    return grid, exit_of_square
+            if kind != FLOOR:
+                gate_of_square.pop((row, col), None)  # a later rule turned it into something else
+    return grid, exit_of_square, gate_of_square
 
 
 def neighbours(grid, row, col):
@@ -228,6 +265,45 @@ def distance_to_exit(grid, neighbour_lists, exit_of_square, exit_name):
     return distance
 
 
+def distance_with_queues(hall, exit_name, extra_cost):
+    """Like distance_to_exit, but stepping into a doorway costs extra steps: the time you would wait
+    in its queue. Because steps now cost different amounts we use Dijkstra's method: the same wave as
+    before, but we always continue from the square with the smallest distance so far (a heap keeps
+    them in order)."""
+    neighbour_lists = hall["neighbours"]
+    gate_of_square = hall["gate_of_square"]
+    distance = np.full((ROWS, COLUMNS), float(10 ** 6))
+    heap = []
+    for square, name in hall["exit_of_square"].items():
+        if name == exit_name:
+            distance[square] = 0.0
+            heap.append((0.0, square))
+    heapq.heapify(heap)
+    while heap:
+        dist_here, square = heapq.heappop(heap)
+        if dist_here > distance[square]:
+            continue                                   # we already found a shorter way to this square
+        for previous in neighbour_lists[square]:
+            # a person on `previous` steps to `square`: 1 step, plus the queue if it means entering a doorway
+            cost = 1.0
+            gate = gate_of_square.get(square)
+            if gate is not None and gate_of_square.get(previous) != gate:
+                cost += extra_cost[gate]
+            if dist_here + cost < distance[previous]:
+                distance[previous] = dist_here + cost
+                heapq.heappush(heap, (dist_here + cost, previous))
+    return distance
+
+
+def queue_costs(occupied, hall, rates):
+    """For each doorway: how many time steps you would wait = people in its queue / tickets per step."""
+    costs = {}
+    for gate, nearby_squares in hall["gate_queue_area"].items():
+        waiting = sum(occupied[square] for square in nearby_squares)
+        costs[gate] = waiting / (gate_rate(gate, rates) * TIME_STEP)
+    return costs
+
+
 # ======================================================================== 3. people
 def stair_landing(grid, where):
     """The floor square where a balcony staircase arrives."""
@@ -238,8 +314,9 @@ def stair_landing(grid, where):
     return square_at(x, y)
 
 
-def create_people(grid):
-    """Make a list of people. Each person is a dictionary."""
+def create_people(grid, case):
+    """Make a list of people for this case. Each person is a dictionary."""
+    reaction = case["reaction"]
     orchestra_seats = []
     mezzanine_seats = []
     for row in range(ROWS):
@@ -253,22 +330,22 @@ def create_people(grid):
 
     people = []
     for seat in random.sample(orchestra_seats, ORCHESTRA_PEOPLE):
-        people.append({"square": seat, "start": REACTION_TIME, "stair": None})
+        people.append({"square": seat, "start": reaction, "stair": None})
     for seat in random.sample(mezzanine_seats, MEZZANINE_PEOPLE):
-        people.append({"square": seat, "start": REACTION_TIME, "stair": None})
+        people.append({"square": seat, "start": reaction, "stair": None})
     for name, how_many, where in BALCONY_STAIRS:
         landing = stair_landing(grid, where)
         for _ in range(how_many):
             # balcony people are not on the floor yet: they wait in the stair's queue
-            people.append({"square": None, "start": REACTION_TIME + STAIR_WALK_TIME,
+            people.append({"square": None, "start": reaction + STAIR_WALK_TIME,
                            "stair": landing})
 
     # give everyone a type: guided, habit or nearest
     for person in people:
         dice = random.random()
-        if dice < SHARE_GUIDED:
+        if dice < case["guided"]:
             person["type"] = "guided"
-        elif dice < SHARE_GUIDED + SHARE_HABIT:
+        elif dice < case["guided"] + case["habit"]:
             person["type"] = "habit"
         else:
             person["type"] = "nearest"
@@ -340,17 +417,94 @@ def choose_square(person, distance, neighbour_lists, occupied, crowd):
     return random.choices(options, weights=weights)[0]
 
 
-def run_once(seed, hall):
-    """Simulate one evacuation. `hall` comes from setup().
-    Returns (people, how many time steps each square was occupied, number of time steps)."""
+# ======================================================================== 6. our measured data
+def load_flow_data():
+    """Read the three data files into {place: {case number: [rows]}}, rows sorted by run number."""
+    data = {}
+    for place, file_name in DATA_FILES.items():
+        data[place] = {}
+        with open(os.path.join(DATA_FOLDER, file_name)) as f:
+            for row in csv.DictReader(f):
+                data[place].setdefault(int(row["Case"]), []).append(row)
+        for rows in data[place].values():
+            rows.sort(key=lambda row: int(row["Run"]))
+    return data
+
+
+def rates_for_run(data, case_number, run):
+    """Flow rates (people per second) for one run, taken from row `run` of each data file.
+    Every stair and every mezzanine door gets the measured rate. The foyer's total rate is split over
+    its 3 doors in the same proportions as the data's door counts."""
+    stairs = data["stairs"][case_number][run % len(data["stairs"][case_number])]
+    corridor = data["corridor"][case_number][run % len(data["corridor"][case_number])]
+    foyer = data["foyer"][case_number][run % len(data["foyer"][case_number])]
+    door_counts = [int(foyer["Door_1_Count"]), int(foyer["Door_2_Count"]), int(foyer["Door_3_Count"])]
+    total_flow = float(foyer["Flow_people_per_s"])
+    return {
+        "stair": float(stairs["Flow_people_per_s"]),
+        "mezz door": float(corridor["Flow_people_per_s"]),
+        "foyer door": [total_flow * count / sum(door_counts) for count in door_counts],
+    }
+
+
+def gate_rate(gate, rates):
+    """The flow rate of one gate, e.g. gate = "foyer door 2"."""
+    if gate.startswith("foyer door"):
+        number = int(gate.split()[-1])
+        return rates["foyer door"][number - 1]
+    if gate.startswith("mezz door"):
+        return rates["mezz door"]
+    return rates["stair"]
+
+
+def swap_stuck_pairs(ready, moved, route_maps, neighbour_lists, gate_of_square):
+    """People who could not move look at their favourite square (the neighbour closest to their exit,
+    even if someone stands there). If two of them want each other's square, they swap with
+    SWAP_CHANCE. Without this, two streams walking in opposite directions can block each other forever.
+    We don't swap inside doorways, so the ticket machines still decide who goes through."""
+    stuck_at = {}                                          # square -> stuck person standing there
+    for person in ready:
+        if id(person) not in moved and person["out_time"] is None:
+            stuck_at[person["square"]] = person
+    for square, person in list(stuck_at.items()):
+        if stuck_at.get(square) is not person:
+            continue                                       # already swapped this step
+        dist = route_maps[person["exit"]]
+        favourite = min(neighbour_lists[square], key=lambda nxt: dist[nxt])
+        other = stuck_at.get(favourite)
+        if other is None or other is person:
+            continue
+        other_dist = route_maps[other["exit"]]
+        other_favourite = min(neighbour_lists[favourite], key=lambda nxt: other_dist[nxt])
+        if other_favourite != square:
+            continue                                       # they don't face each other
+        if square in gate_of_square or favourite in gate_of_square:
+            continue
+        if random.random() < SWAP_CHANCE:
+            person["square"], other["square"] = favourite, square
+        # each pair is handled once
+        del stuck_at[favourite]
+        stuck_at.pop(square, None)
+
+
+def run_once(seed, hall, case, rates):
+    """Simulate one evacuation. `hall` comes from setup(), `case` from CASES, `rates` from rates_for_run().
+    Returns (people, how many time steps each square was occupied, number of time steps, gate times).
+    gate times = {gate: list of the times at which someone went through that doorway}"""
     grid = hall["grid"]
     exit_of_square = hall["exit_of_square"]
+    gate_of_square = hall["gate_of_square"]
     neighbour_lists = hall["neighbours"]
     distance = hall["distance"]
 
     random.seed(seed)                                      # same seed -> exactly the same run
-    people = create_people(grid)
+    people = create_people(grid, case)
     choose_exits(people, distance, hall["widths"])
+
+    # one ticket machine per gate, plus one per balcony staircase
+    gates = sorted(set(gate_of_square.values()))
+    tickets = {gate: 0.0 for gate in gates}
+    gate_times = {gate: [] for gate in gates}
 
     occupied = np.zeros((ROWS, COLUMNS), dtype=int)       # 1 where someone stands
     for person in people:
@@ -365,27 +519,57 @@ def run_once(seed, hall):
     time = 0.0
     step = 0
     people_inside = len(people)
+    stair_tickets = {landing: 0.0 for landing in stair_queues}
+    exits_in_use = sorted(set(p["exit"] for p in people))
+    route_maps = dict(distance)                            # the maps people walk by (updated with queues)
+    next_map_update = 0.0
     while people_inside > 0 and time < MAX_TIME:
-        # balcony people step off their staircase when the landing square is free
+        # every few seconds: people look at the queues and a crowded doorway now counts as farther away
+        if time >= next_map_update:
+            extra = queue_costs(occupied, hall, rates)
+            for name in exits_in_use:
+                route_maps[name] = distance_with_queues(hall, name, extra)
+            next_map_update = time + MAP_UPDATE_TIME
+
+        # every ticket machine prints its share of a ticket (at most 1 ticket can wait)
+        for gate in gates:
+            tickets[gate] = min(1.0, tickets[gate] + gate_rate(gate, rates) * TIME_STEP)
+        for landing in stair_queues:
+            if USE_STAIR_DATA_FOR_BALCONY:
+                stair_tickets[landing] = min(1.0, stair_tickets[landing] + rates["stair"] * TIME_STEP)
+            else:
+                stair_tickets[landing] = 1.0
+
+        # balcony people step off their staircase when the landing square is free (and a ticket is there)
         for landing, waiting in stair_queues.items():
-            if waiting and waiting[0]["start"] <= time and not occupied[landing]:
+            if waiting and waiting[0]["start"] <= time and not occupied[landing] and stair_tickets[landing] >= 1:
                 person = waiting.pop(0)
                 person["square"] = landing
                 occupied[landing] = 1
+                stair_tickets[landing] -= 1
 
         # everybody who is ready chooses a square (all at the same time)
         crowd = count_crowd(occupied)
         wanted = {}                                        # square -> people who want it
         ready = [p for p in people
                  if p["out_time"] is None and p["square"] is not None and p["start"] <= time]
+        random.shuffle(ready)                              # fair: nobody always chooses first
         for person in ready:
-            target = choose_square(person, distance, neighbour_lists, occupied, crowd)
+            target = choose_square(person, route_maps, neighbour_lists, occupied, crowd)
             if target != person["square"]:
                 wanted.setdefault(target, []).append(person)
 
         # if several people want the same square, a random one of them gets it
+        moved = set()
         for target, candidates in wanted.items():
             winner = random.choice(candidates)
+            # stepping INTO a doorway needs a ticket from its machine
+            gate = gate_of_square.get(target)
+            if gate is not None and gate_of_square.get(winner["square"]) != gate:
+                if tickets[gate] < 1:
+                    continue                               # no ticket: wait this step
+                tickets[gate] -= 1
+                gate_times[gate].append(time)              # remember when someone went through
             occupied[winner["square"]] = 0
             if grid[target] == EXIT:                       # stepped outside
                 winner["square"] = None
@@ -395,22 +579,43 @@ def run_once(seed, hall):
             else:
                 winner["square"] = target
                 occupied[target] = 1
+            moved.add(id(winner))
+
+        # two people stuck face to face squeeze past each other (swap places)
+        swap_stuck_pairs(ready, moved, route_maps, neighbour_lists, gate_of_square)
 
         assert occupied.max() <= 1, "two people on one square"
         times_occupied += occupied
         time += TIME_STEP
         step += 1
 
-    return people, times_occupied, step
+    return people, times_occupied, step, gate_times
 
 
 def setup():
     """Build everything that is the same in every run: the map, neighbours, door widths and
     distance maps. Returns them together in one dictionary."""
-    grid, exit_of_square = make_hall()
+    grid, exit_of_square, gate_of_square = make_hall()
     neighbour_lists = make_neighbour_lists(grid)
     distance = {}
     for name in EXIT_NAMES:
         distance[name] = distance_to_exit(grid, neighbour_lists, exit_of_square, name)
-    return {"grid": grid, "exit_of_square": exit_of_square, "neighbours": neighbour_lists,
-            "distance": distance, "widths": door_widths(grid, exit_of_square)}
+    # the squares in front of each doorway where its queue forms: within QUEUE_RADIUS of its middle,
+    # and only on the side people come from (closer to the hall centre, since everyone moves outwards)
+    gate_queue_area = {}
+    for gate in sorted(set(gate_of_square.values())):
+        squares = [square for square, g in gate_of_square.items() if g == gate]
+        middle_x = np.mean([square_centre(r, c)[0] for r, c in squares])
+        middle_y = np.mean([square_centre(r, c)[1] for r, c in squares])
+        gate_radius = math.hypot(middle_x, middle_y)
+        area = []
+        for square in neighbour_lists:
+            x, y = square_centre(*square)
+            close = math.hypot(x - middle_x, y - middle_y) <= QUEUE_RADIUS
+            in_front = math.hypot(x, y) < gate_radius
+            if close and in_front and square not in squares:
+                area.append(square)
+        gate_queue_area[gate] = area
+    return {"grid": grid, "exit_of_square": exit_of_square, "gate_of_square": gate_of_square,
+            "neighbours": neighbour_lists, "distance": distance, "widths": door_widths(grid, exit_of_square),
+            "gate_queue_area": gate_queue_area}
