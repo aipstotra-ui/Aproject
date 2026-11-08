@@ -45,8 +45,15 @@ MAX_TIME = 600.0           # stop the simulation after this many seconds
 # "reaction" = seconds before people start to move.
 # guided = follow the ushers, habit = back to the front foyer, nearest = closest exit.
 CASES = [
-    {"case": 3, "name": "Students, emergency", "reaction": 5.0, "guided": 0.0, "habit": 0.40, "nearest": 0.60},
-    {"case": 4, "name": "Concert, emergency", "reaction": 10.0, "guided": 0.60, "habit": 0.25, "nearest": 0.15},
+    # "case" = the label we show, "data_case" = which case of our data files it uses
+    {"case": "3", "data_case": 3, "name": "Students, emergency",
+     "reaction": 5.0, "guided": 0.0, "habit": 0.40, "nearest": 0.60},
+    {"case": "4", "data_case": 4, "name": "Concert, emergency",
+     "reaction": 10.0, "guided": 0.60, "habit": 0.25, "nearest": 0.15},
+    # Crowd Managers: we assume they get everyone to follow the ushers' plan (100 % guided),
+    # which spreads people over all exits as efficiently as possible
+    {"case": "4 + CM", "data_case": 4, "name": "Concert, emergency, Crowd Managers",
+     "reaction": 10.0, "guided": 1.0, "habit": 0.0, "nearest": 0.0},
 ]
 
 # our measured bottleneck data (one file per place, 4 cases x 500 runs each)

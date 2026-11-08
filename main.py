@@ -31,7 +31,7 @@ import simulation as sim
 NUMBER_OF_RUNS = 30        # how many times we repeat each case
 TIME_LIMIT = 180           # the fire code says everyone must be out within 180 s
 OUTPUT_FOLDER = "output"
-CASE_COLOURS = ["#1baf7a", "#6250d6"]   # case 3 (students), case 4 (concert)
+CASE_COLOURS = ["#1baf7a", "#6250d6", "#eb6834"]   # case 3 (students), case 4 (concert), concert + Crowd Managers
 PLACES = [("stair", "stairs", "Stairs (orchestra -> mezzanine)"),
           ("mezz door", "corridor", "Mezzanine doors (corridor)"),
           ("foyer door", "foyer", "Foyer doors (all 3)")]
@@ -106,7 +106,7 @@ def draw_map(hall):
 
 def draw_escape_times(results):
     """One dot per run: the calculated time for the last person to get out, per case."""
-    fig, ax = plt.subplots(figsize=(8, 3.6))
+    fig, ax = plt.subplots(figsize=(8.5, 4.4))
     for row, (case, colour) in enumerate(zip(sim.CASES, CASE_COLOURS)):
         times = results[case["case"]]["times"]
         wobble = np.linspace(-0.12, 0.12, len(times))         # spread the dots a little so they don't overlap
@@ -138,7 +138,7 @@ def draw_doorway_times(results):
                 return colour
         return "#2e9e5b"
 
-    fig, axes = plt.subplots(1, len(sim.CASES), figsize=(13, 7.5), sharex=True)
+    fig, axes = plt.subplots(1, len(sim.CASES), figsize=(19, 7.5), sharex=True)
     for ax, case in zip(axes, sim.CASES):
         finishes = results[case["case"]]["doorway_finish"]
         names = sorted(finishes, key=lambda d: (sim.doorway_level(d), d))
@@ -167,7 +167,7 @@ def draw_heatmaps(hall, results):
     grid = hall["grid"]
     extent = [sim.X_MIN, sim.X_MAX, sim.Y_MIN, sim.Y_MAX]
     top = max(float(results[c["case"]]["density"].max()) for c in sim.CASES)
-    fig, axes = plt.subplots(1, len(sim.CASES), figsize=(14, 4.6))
+    fig, axes = plt.subplots(1, len(sim.CASES), figsize=(20, 4.6))
     for ax, case in zip(axes.flat, sim.CASES):
         density = np.ma.masked_where(grid == sim.WALL, results[case["case"]]["density"])
         ax.imshow(grid == sim.WALL, cmap=ListedColormap(["white", "#3b3f45"]), extent=extent, interpolation="nearest")
@@ -189,7 +189,7 @@ def draw_flow_check(results, data):
     fig, axes = plt.subplots(1, 3, figsize=(13, 4))
     x = np.arange(len(sim.CASES))
     for ax, (gate_kind, data_place, title) in zip(axes, PLACES):
-        measured = [statistics.mean(float(row["Flow_people_per_s"]) for row in data[data_place][c["case"]])
+        measured = [statistics.mean(float(row["Flow_people_per_s"]) for row in data[data_place][c["data_case"]])
                     for c in sim.CASES]
         busiest = [statistics.mean(f["busiest"] for f in results[c["case"]]["flows"][gate_kind]) for c in sim.CASES]
         average = [statistics.mean(f["average"] for f in results[c["case"]]["flows"][gate_kind]) for c in sim.CASES]
@@ -224,7 +224,7 @@ def main():
                            "flows": {kind: [] for kind, _, _ in PLACES}}
         print(f"\nCase {number}: {case['name']}")
         for run in range(NUMBER_OF_RUNS):
-            rates = sim.rates_for_run(data, number, run)          # this run's measured flow rates
+            rates = sim.rates_for_run(data, case["data_case"], run)   # this run's measured flow rates
             people, times_occupied, steps, gate_times = sim.run_once(run, hall, case, rates)
             out_times = [p["out_time"] for p in people if p["out_time"] is not None]
             stuck = total_people - len(out_times)
@@ -270,7 +270,7 @@ def main():
         print(f"  within {TIME_LIMIT} s     : {under} of {NUMBER_OF_RUNS} runs")
         print("  people per exit : " + ", ".join(f"{n} {r['exits'][n] / NUMBER_OF_RUNS:.0f}" for n in sim.EXIT_NAMES))
         for kind, place, title in PLACES:
-            measured = statistics.mean(float(row["Flow_people_per_s"]) for row in data[place][case["case"]])
+            measured = statistics.mean(float(row["Flow_people_per_s"]) for row in data[place][case["data_case"]])
             busiest = statistics.mean(f["busiest"] for f in r["flows"][kind])
             average = statistics.mean(f["average"] for f in r["flows"][kind])
             print(f"  {title:34s}: data {measured:.2f} p/s | simulation busiest 20 s {busiest:.2f}, average {average:.2f} p/s")

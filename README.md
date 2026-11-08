@@ -9,12 +9,16 @@ Each step is partly random, so we repeat every evacuation 30 times.
 The simulation tells us **how many people go through each doorway** (the same counts behind the heat map).
 From those counts and each doorway's flow rate we then **calculate when the last person gets out** (rule 10).
 
-We simulate the two **emergency** cases from our data:
+We simulate the two **emergency** cases from our data, plus the concert with Crowd Managers:
 
-| Case | Who | Reaction time | How people pick an exit |
-|---|---|---|---|
-| 3 | Students (lecture) | 5 s | 60% nearest exit, 40% habit (front foyer) |
-| 4 | Concert audience | 10 s | 60% follow the ushers, 25% habit, 15% nearest exit |
+| Case | Who | Data used | Reaction time | How people pick an exit |
+|---|---|---|---|---|
+| 3 | Students (lecture) | case 3 | 5 s | 60% nearest exit, 40% habit (front foyer) |
+| 4 | Concert audience | case 4 | 10 s | 60% follow the ushers, 25% habit, 15% nearest exit |
+| 4 + CM | Concert audience, with Crowd Managers | case 4 | 10 s | **100% follow the ushers** |
+
+For the Crowd Manager scenario we assume the Crowd Managers get everyone to follow the ushers' plan, which spreads people over all the exits as efficiently as possible (rule 4).
+Everything else is the same as case 4: the same measured doorway rates, and the same reaction time.
 
 ## How to run
 
@@ -187,14 +191,14 @@ The step-by-step simulation's own finishing time is still printed and saved, for
 
 ## Results (30 runs per case)
 
-| | Case 3: students, emergency | Case 4: concert, emergency |
-|---|---|---|
-| **Calculated time until the last person is out** | **143 s** | **190 s** |
-| Spread between runs (standard deviation) | 7 s | 17 s |
-| Fastest / slowest run | 132 s / 159 s | 169 s / 221 s |
-| Runs within the 180 s limit | **30 of 30** | **11 of 30** |
-| Doorways that finish last | P2 and P3 (138 s), FRONT (132 s) | FRONT (190 s), foyer doors 2 and 3 (182 s, 177 s) |
-| Step-by-step simulation's own time (for comparison) | 190 s | 245 s |
+| | Case 3: students | Case 4: concert | Case 4 + CM: concert with Crowd Managers |
+|---|---|---|---|
+| **Calculated time until the last person is out** | **143 s** | **190 s** | **157 s** |
+| Spread between runs (standard deviation) | 7 s | 17 s | 12 s |
+| Fastest / slowest run | 132 s / 159 s | 169 s / 221 s | 136 s / 179 s |
+| Runs within the 180 s limit | **30 of 30** | **11 of 30** | **30 of 30** |
+| Doorways that finish last | P2 and P3 (138 s), FRONT (132 s) | FRONT (190 s), foyer door 2 (182 s) | FRONT (157 s), foyer door 2 (149 s) |
+| Step-by-step simulation's own time (for comparison) | 190 s | 245 s | 209 s |
 
 Average number of people per exit:
 
@@ -202,13 +206,15 @@ Average number of people per exit:
 |---|---|---|---|---|---|---|---|
 | 3: students | 546 | 63 | 61 | 76 | 258 | 256 | 69 |
 | 4: concert | 639 | 106 | 107 | 112 | 128 | 128 | 110 |
+| 4 + CM: concert with Crowd Managers | 534 | 147 | 147 | 149 | 101 | 101 | 149 |
 
 ![escape time](output/escape_time.png)
 
 **Calculated time for the last person to get out.** One dot per run, with the average marked.
 
 - **Students:** always within 180 s. They react faster and 60% use the nearest exit, so the hall empties through all exits. The side doors P2 and P3 next to the foyer finish last; about 255 people each use them.
-- **Concert:** about a third of the runs make 180 s. The foyer route decides it: 639 people go out the front.
+- **Concert:** only about a third of the runs make 180 s. The foyer route decides it: 639 people go out the front.
+- **Concert with Crowd Managers:** **33 s faster on average (157 s vs 190 s), and every run makes 180 s.** The ushers send about 100 fewer people to the front, and more to the less-used exits (NW, NE, P1, P4: about 148 each instead of about 110). The slowest run (179 s) only just makes the limit, though.
 
 ![doorway times](output/doorway_times.png)
 
@@ -218,7 +224,9 @@ The longest bar decides the escape time.
 - **Concert:**
   - The 3 foyer doors and the FRONT exit finish last.
   - Before them, mezzanine doors 4 and 6, the ones next to the foyer, take about 140 people each and finish at about 170 s.
-  - The far mezzanine doors (1, 2, 8, 9) carry fewer than 45 people and are done by about 85 s.
+- **Concert with Crowd Managers:**
+  - Mezzanine doors 4 and 6 drop to about 110 people each, and the front exit to 534 people.
+  - The foyer route still finishes last, but about 30 s earlier.
 - **Students:** the load is spread more evenly, and the side doors P2 and P3 finish last.
 
 ![heat map](output/heatmap.png)
@@ -227,6 +235,7 @@ The longest bar decides the escape time.
 
 - The dark red queues sit **in front of the mezzanine doors next to the foyer**, and in the corridor in front of the 3 foyer doors.
 - **Concert:** 25% go back to the foyer by habit, and the ushers send many people there too. So the queues in front of the foyer-side mezzanine doors are the longest.
+- **Concert with Crowd Managers:** the queues at the foyer-side mezzanine doors are shorter. More people walk through the far mezzanine doors toward the side exits, which shows up as light orange near the stage ends.
 - **Students:** 60% head for the nearest exit, so there are also queues at the mezzanine doors near the P2 and P3 side exits.
 
 ![flow check](output/flow_check.png)
@@ -250,6 +259,7 @@ So the calculated time is what our measured rates allow, and the simulation's ow
 Our data says each mezzanine door and stair opening lets through only about 1 person per second.
 People don't spread evenly over the 9 mezzanine doors: the doors closest to the foyer get about 140 people each, while the far ones get fewer than 45.
 This points to where guidance (ushers or LED signs) could help most: spreading people over the mezzanine doors and away from the foyer.
+The Crowd Manager scenario confirms it: with everyone following the ushers' plan, the concert gets out about 33 s faster.
 
 ## Simplifications
 
@@ -260,6 +270,6 @@ This points to where guidance (ushers or LED signs) could help most: spreading p
 - **The calculation** assumes each doorway works at its full rate while people wait, and uses the shortest walk between doorways. It doesn't add the time a doorway sits idle because the doorway before it is slow, except through the "last person arrives" rule.
 - **Map:** one floor, simplified shapes, door widths estimated from the CMCM drawings. The balcony itself isn't drawn.
 - **Speed and reaction:** everyone walks at the same speed, and reaction time is fixed and the same for everyone.
-- **Ushers:** modelled only by how they spread the guided 60%. They don't move.
+- **Ushers / Crowd Managers:** modelled only through the exit each guided person is given (the ushers' spread-out plan). They don't stand in the hall or talk to people on the way. In the Crowd Manager scenario we assume everyone follows them (100% guided), which is the best case.
 
 All the settings are named constants at the top of `simulation.py`.
