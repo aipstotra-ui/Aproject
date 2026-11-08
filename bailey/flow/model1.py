@@ -1,92 +1,138 @@
-"""Model I driver: scenario file -> bounds, quickest-flow optimum T*, and fluid simulations per policy."""
-from __future__ import annotations
+"""Model I, step 6: run one whole scenario.
 
-from dataclasses import dataclass, field
+For a scenario (e.g. scenarios/concert_cm.yaml) this:
+  1. builds the network (with a blocked door, if asked)
+  2. lists the route options (PathSet)
+  3. for the scenario's behaviour mix, and any extra mixes we want to compare, works out how people
+     split over the routes and simulates the evacuation
+  4. optionally computes the quick lower limits (bounds.py) and the fastest possible time T*
+"""
 from pathlib import Path
 
-import numpy as np
 import yaml
 
 from bailey.flow.bounds import lower_bounds
-from bailey.flow.fluid import FluidResult, PathSet, simulate
-from bailey.flow.network import Network, make_network
+from bailey.flow.fluid import PathSet, simulate
+from bailey.flow.network import make_network
 from bailey.flow.policies import build_policy
-from bailey.flow.quickest_lp import QuickestResult, solve_quickest
+from bailey.flow.quickest_lp import solve_quickest
 from bailey.params import ROOT, load_params, premovement_release
 
 SCENARIO_DIR = ROOT / "scenarios"
-REFERENCE_POLICIES = {"habit": {"habit": 1.0}, "nearest": {"nearest": 1.0},
-                      "ue": {"ue": 1.0}, "assigned": {"assigned": 1.0}}
+
+# the "pure" behaviours we compare every scenario with
+REFERENCE_POLICIES = {
+    "habit": {"habit": 1.0},
+    "nearest": {"nearest": 1.0},
+    "ue": {"ue": 1.0},
+    "assigned": {"assigned": 1.0},
+}
 
 
-def load_scenario(name_or_path: str) -> dict:
-    p = Path(name_or_path)
-    if not p.exists():
-        p = SCENARIO_DIR / f"{name_or_path}.yaml"
-    with open(p) as f:
+def load_scenario(name_or_path):
+    """Read a scenario file, by name ("concert_cm") or by path."""
+    path = Path(name_or_path)
+    if not path.exists():
+        path = SCENARIO_DIR / f"{name_or_path}.yaml"
+    with open(path) as f:
         return yaml.safe_load(f)
 
 
-@dataclass
 class ScenarioRun:
-    scenario: dict
-    net: Network
-    blocked: dict[str, float]
-    known: bool
-    bounds: dict | None = None
-    quickest: QuickestResult | None = None
-    sims: dict[str, FluidResult] = field(default_factory=dict)
+    """Everything one scenario run produced."""
+
+    def __init__(self, scenario, net, blocked, known):
+        self.scenario = scenario
+        self.net = net
+        self.blocked = blocked
+        self.known = known
+        self.bounds = None        # lower limits (dict), if computed
+        self.quickest = None      # T* result, if computed
+        self.sims = {}            # behaviour name -> FluidResult
 
 
-def run_scenario(scn: dict, *, blocked: dict[str, float] | None = None, known: bool = True,
-                 policies: dict[str, dict] | None = None, with_lp: bool = True, with_bounds: bool = True,
-                 params: dict | None = None) -> ScenarioRun:
-    """Evaluate one scenario. `policies` maps a label to a routing mix; the scenario's own mix is
-    always run under the label 'scenario'.
+def run_scenario(scn, blocked=None, known=True, policies=None, with_lp=True, with_bounds=True, params=None):
+    """Evaluate one scenario.
 
-    Unknown obstruction (known=False): routes - including the Crowd Managers' LP assignment - are
-    planned on the intact building; people discover the obstruction on arrival and re-route.
+    blocked   {edge id: capacity share left}
+    known     False = nobody knows about the blocked door until they reach it (even the Crowd
+              Managers plan on the intact building)
+    policies  extra behaviour mixes to run, {label: mix}; the scenario's own mix is called "scenario"
     """
-    P = params or load_params()
-    dt, H = P["numerics"]["dt"], P["numerics"]["horizon"]
-    tol = P["numerics"]["done_tolerance"]
-    pm = P["premovement"][scn["premovement"]]
-    rel = premovement_release(P, scn["premovement"], dt, H)
-    blocked = dict(blocked or {})
+    if params is None:
+        params = load_params()
+    if blocked is None:
+        blocked = {}
+    dt = params["numerics"]["dt"]
+    horizon = params["numerics"]["horizon"]
+    tol = params["numerics"]["done_tolerance"]
+    reaction = params["premovement"][scn["premovement"]]
+    release = premovement_release(params, scn["premovement"], dt, horizon)
 
-    net = make_network(scn["mode"], blocked, known=known, params=P)
+    # ---- 1 + 2: network and route options ----
+    net = make_network(scn["mode"], blocked, known=known, params=params)
     paths = PathSet.build(net)
-    planning_net = net if known else make_network(scn["mode"], {}, params=P)
-    planning_paths = PathSet(planning_net, paths.commodities, paths.by_zone)
-    sim_kw = dict(tol=tol, discovery_delay=P["blocked_discovery_delay"])
 
+    # People plan on the building as they BELIEVE it to be. If the blocked door is unknown, they plan
+    # on the intact building (same route options, but the blocked door looks open).
+    if known:
+        planning_net = net
+    else:
+        planning_net = make_network(scn["mode"], {}, params=params)
+    planning_paths = PathSet(planning_net, paths.commodities, paths.by_zone)
+
+    settings = {"tol": tol, "discovery_delay": params["blocked_discovery_delay"]}
+
+    # ---- 3: simulate every behaviour mix ----
     run = ScenarioRun(scn, net, blocked, known)
-    mixes = {"scenario": scn["routing"], **(policies or {})}
-    for label, spec in mixes.items():
-        frac = build_policy(planning_paths, spec, rel, dt, H, pm, **sim_kw)
-        run.sims[label] = simulate(net, paths, frac, rel, dt, H, **sim_kw)
+    mixes = {"scenario": scn["routing"]}
+    if policies:
+        mixes.update(policies)
+    for label, mix in mixes.items():
+        frac = build_policy(planning_paths, mix, release, dt, horizon, reaction, **settings)
+        run.sims[label] = simulate(net, paths, frac, release, dt, horizon, **settings)
+
+    # ---- 4: lower limits and fastest possible time ----
     if with_bounds:
-        run.bounds = lower_bounds(make_network(scn["mode"], blocked, params=P), scn["premovement"])
+        run.bounds = lower_bounds(make_network(scn["mode"], blocked, params=params), scn["premovement"])
     if with_lp:
-        finite = [r.T for r in run.sims.values() if np.isfinite(r.T)]
-        horizon = (min(finite) + 10 * dt) if finite else H   # any fluid run is LP-feasible -> T* <= min T
-        run.quickest = solve_quickest(make_network(scn["mode"], blocked, params=P), rel, dt, horizon, tol=tol)
+        # T* can never be later than our quickest simulation, so we only need to look that far ahead
+        finished = [result.T for result in run.sims.values() if result.T != float("inf")]
+        if finished:
+            lp_horizon = min(finished) + 10 * dt
+        else:
+            lp_horizon = horizon
+        full_net = make_network(scn["mode"], blocked, params=params)
+        run.quickest = solve_quickest(full_net, release, dt, lp_horizon, tol=tol)
     return run
 
 
-def summary_rows(run: ScenarioRun) -> list[dict]:
+def summary_rows(run):
+    """One table row per behaviour (and one for T*), for the results CSV."""
     scn = run.scenario
-    base = {"scenario": scn["name"], "question": scn["question"],
-            "blocked": ";".join(f"{k}x{v:.2f}" for k, v in run.blocked.items()) or "none",
-            "known": run.known}
+    if run.blocked:
+        blocked_text = ";".join(f"{name}x{share:.2f}" for name, share in run.blocked.items())
+    else:
+        blocked_text = "none"
+    common = {"scenario": scn["name"], "question": scn["question"], "blocked": blocked_text, "known": run.known}
+
     rows = []
     if run.quickest is not None:
-        rows.append({**base, "policy": "T*", "T": run.quickest.T,
-                     "mean_exit": run.quickest.total_person_time / run.net.N,
-                     **{f"out_{k}": round(v, 1) for k, v in run.quickest.exit_totals.items()}})
-    for label, r in run.sims.items():
-        rows.append({**base, "policy": label, "T": r.T, "mean_exit": r.mean_exit_time,
-                     **{f"out_{k}": round(v, 1) for k, v in r.exit_totals.items()}})
+        row = dict(common)
+        row["policy"] = "T*"
+        row["T"] = run.quickest.T
+        row["mean_exit"] = run.quickest.total_person_time / run.net.N
+        for exit_name, people in run.quickest.exit_totals.items():
+            row["out_" + exit_name] = round(people, 1)
+        rows.append(row)
+    for label, result in run.sims.items():
+        row = dict(common)
+        row["policy"] = label
+        row["T"] = result.T
+        row["mean_exit"] = result.mean_exit_time
+        for exit_name, people in result.exit_totals.items():
+            row["out_" + exit_name] = round(people, 1)
+        rows.append(row)
     if run.bounds is not None:
         for row in rows:
             row["T_lower_bound"] = run.bounds["T_lower_bound"]

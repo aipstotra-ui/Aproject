@@ -1,19 +1,19 @@
-"""Model I network: building.json + params.yaml -> arrays used by the flow models.
+"""Model I, step 1: turn the building description into a network the computer can work with.
 
-An Evacuation network is a directed graph whose edges carry
-  cap[e]   maximum flow, persons/s (SFPE: Fsm x effective width)
-  tau[e]   free travel time, s (length / free speed)
-and whose nodes carry a storage limit (area x jam density) used for queue spill-back.
+The building (data/building.json) is a list of
+  * nodes: places, e.g. a seating zone, a door, a piece of corridor, an exit
+  * edges: one-way connections between two places, e.g. "mezzanine door 4 -> corridor"
 
-Obstructions: `blocked` maps edge id -> remaining capacity fraction (0 = fully blocked).
-If `known` is True the obstruction is known when routes are planned (Crowd Managers redirect at t=0);
-otherwise routes are planned on the intact building and people discover the obstruction on arrival.
+For every edge we work out two numbers:
+  * capacity    how many people per second can pass (from the SFPE door/stair flow rates)
+  * walk time   how many seconds it takes to walk along it at normal speed
+
+For every node we work out how many people can stand there before it is full (its storage).
+
+A blocked door is handled by lowering its capacity (to 0 if it is completely blocked).
 """
-from __future__ import annotations
-
 import json
 import math
-from dataclasses import dataclass, field
 
 import networkx as nx
 import numpy as np
@@ -21,101 +21,180 @@ import numpy as np
 from bailey.params import BUILDING_PATH, capacity, free_speed, load_params
 
 
-def load_building(path=None) -> dict:
-    with open(path or BUILDING_PATH) as f:
+def load_building(path=None):
+    """Read the building description (data/building.json) into a Python dictionary."""
+    if path is None:
+        path = BUILDING_PATH
+    with open(path) as f:
         return json.load(f)
 
 
-@dataclass
 class Network:
-    building: dict
-    params: dict
-    mode: str = "emergency"                  # "emergency": all exits; "normal": only edges with use == "normal"
-    blocked: dict[str, float] = field(default_factory=dict)
-    known: bool = True
+    """The building as a network of places (nodes) and connections (edges).
 
-    def __post_init__(self) -> None:
-        P = self.params
-        self.node_ids = [n["id"] for n in self.building["nodes"]]
-        self.nidx = {nid: i for i, nid in enumerate(self.node_ids)}
-        self.nodes = {n["id"]: n for n in self.building["nodes"]}
-        self.exits = [x for x in self.building["exits"]]
-        self.zones = [n["id"] for n in self.building["nodes"] if n["kind"] == "zone"]
-        self.seats = np.array([self.nodes[z]["seats"] for z in self.zones], dtype=float)
-        self.N = float(self.seats.sum())
+    mode     "emergency" = every exit may be used; "normal" = only the everyday routes
+    blocked  {edge id: how much of its capacity is left}, e.g. {"C090->FOYER": 0.0}
+    known    True  = everybody knows about the blocked door from the start
+             False = people only find out when they get there
+    """
 
-        edges = [e for e in self.building["edges"] if self.mode == "emergency" or e["use"] == "normal"]
-        for eid in self.blocked:
-            if not any(e["id"] == eid for e in edges):
-                raise KeyError(f"blocked edge {eid!r} not in network")
-        self.edges = edges
-        self.eidx = {e["id"]: i for i, e in enumerate(edges)}
-        self.tail = np.array([self.nidx[e["from"]] for e in edges])
-        self.head = np.array([self.nidx[e["to"]] for e in edges])
-        self.cap_intact = np.array([capacity(P, e["kind"], e["width"], e["n"]) for e in edges])
-        factor = np.array([self.blocked.get(e["id"], 1.0) for e in edges])
-        self.cap = self.cap_intact * factor
-        self.tau = np.array([e["length"] / free_speed(P, e["kind"]) for e in edges])
-        dmax = P["hydraulic"]["d_max"]
-        self.storage = np.array([
-            (self.nodes[n]["area"] * dmax) if self.nodes[n]["area"] else math.inf for n in self.node_ids
-        ])
-        self.is_exit = np.array([self.nodes[n]["kind"] == "exit" for n in self.node_ids])
+    def __init__(self, building, params, mode="emergency", blocked=None, known=True):
+        self.building = building
+        self.params = params
+        self.mode = mode
+        self.blocked = dict(blocked or {})
+        self.known = known
 
-    # ------------------------------------------------------------------ graphs
-    def graph(self, *, planning: bool = True) -> nx.DiGraph:
-        """DiGraph weighted by free travel time. With planning=True and an unknown obstruction,
-        the obstruction is invisible (routes are planned on the intact building)."""
+        # ---- Step 1: the places (nodes) ----
+        self.node_ids = []       # list of node names, e.g. ["C000", "C010", ...]
+        self.nidx = {}           # node name -> its position in that list
+        self.nodes = {}          # node name -> all information about it
+        for node in building["nodes"]:
+            self.nidx[node["id"]] = len(self.node_ids)
+            self.node_ids.append(node["id"])
+            self.nodes[node["id"]] = node
+
+        self.exits = list(building["exits"])
+
+        # seating zones and how many people sit in each
+        self.zones = []
+        seat_counts = []
+        for node in building["nodes"]:
+            if node["kind"] == "zone":
+                self.zones.append(node["id"])
+                seat_counts.append(node["seats"])
+        self.seats = np.array(seat_counts, dtype=float)
+        self.N = float(sum(seat_counts))          # total number of people (1,329)
+
+        # ---- Step 2: the connections (edges) ----
+        # In a normal departure people only use the everyday routes.
+        self.edges = []
+        for edge in building["edges"]:
+            if mode == "emergency" or edge["use"] == "normal":
+                self.edges.append(edge)
+
+        # check that every blocked door really exists
+        edge_names = [edge["id"] for edge in self.edges]
+        for name in self.blocked:
+            if name not in edge_names:
+                raise KeyError(f"blocked edge {name!r} not in network")
+
+        self.eidx = {}           # edge name -> its position in self.edges
+        for i, edge in enumerate(self.edges):
+            self.eidx[edge["id"]] = i
+
+        # where each edge starts (tail) and ends (head), as node positions
+        self.tail = np.array([self.nidx[edge["from"]] for edge in self.edges])
+        self.head = np.array([self.nidx[edge["to"]] for edge in self.edges])
+
+        # ---- Step 3: capacity and walking time of every edge ----
+        capacity_list = []
+        capacity_after_blocking = []
+        walk_time_list = []
+        for edge in self.edges:
+            full_capacity = capacity(params, edge["kind"], edge["width"], edge["n"])
+            share_left = self.blocked.get(edge["id"], 1.0)      # 1.0 = not blocked
+            capacity_list.append(full_capacity)
+            capacity_after_blocking.append(full_capacity * share_left)
+            walk_time_list.append(edge["length"] / free_speed(params, edge["kind"]))
+        self.cap_intact = np.array(capacity_list)      # capacity if nothing were blocked
+        self.cap = np.array(capacity_after_blocking)   # capacity actually available
+        self.tau = np.array(walk_time_list)            # walking time in seconds
+
+        # ---- Step 4: how many people fit in each place ----
+        # storage = floor area x the most people that fit on one square metre (3.8)
+        max_density = params["hydraulic"]["d_max"]
+        storage_list = []
+        exit_flags = []
+        for name in self.node_ids:
+            node = self.nodes[name]
+            if node["area"]:
+                storage_list.append(node["area"] * max_density)
+            else:
+                storage_list.append(math.inf)          # seats and exits: no limit
+            exit_flags.append(node["kind"] == "exit")
+        self.storage = np.array(storage_list)
+        self.is_exit = np.array(exit_flags)
+
+    # ------------------------------------------------------------------ helpers
+    def graph(self, planning=True):
+        """Make a networkx graph for finding shortest paths. Each edge's 'tau' is its walking time.
+
+        If a blocked door is not known yet (known=False), people plan their route as if the door
+        were open, so with planning=True we leave the blocked door in the graph."""
+        if planning and not self.known:
+            caps = self.cap_intact
+        else:
+            caps = self.cap
         G = nx.DiGraph()
         G.add_nodes_from(self.node_ids)
-        caps = self.cap_intact if (planning and not self.known) else self.cap
-        for i, e in enumerate(self.edges):
-            if caps[i] > 1e-9:
-                G.add_edge(e["from"], e["to"], idx=i, tau=self.tau[i], cap=caps[i])
+        for i, edge in enumerate(self.edges):
+            if caps[i] > 1e-9:                         # a fully blocked edge is left out
+                G.add_edge(edge["from"], edge["to"], idx=i, tau=self.tau[i], cap=caps[i])
         return G
 
-    def path_edges(self, nodes: list[str]) -> list[int]:
-        return [self.eidx[f"{a}->{b}"] for a, b in zip(nodes[:-1], nodes[1:])]
+    def path_edges(self, node_names):
+        """Turn a list of places [A, B, C] into the list of edge positions [A->B, B->C]."""
+        edge_list = []
+        for i in range(len(node_names) - 1):
+            edge_list.append(self.eidx[node_names[i] + "->" + node_names[i + 1]])
+        return edge_list
 
-    def path_tau(self, path: list[int]) -> float:
-        return float(self.tau[path].sum())
+    def path_tau(self, edge_list):
+        """Total walking time of a path (list of edge positions)."""
+        total = 0.0
+        for e in edge_list:
+            total += self.tau[e]
+        return float(total)
 
-    def zone_paths(self, *, planning: bool = True) -> dict[str, dict[str, list[int]]]:
-        """For every zone and every reachable exit: the fastest (free-flow) path, as edge indices."""
+    def zone_paths(self, planning=True):
+        """For every seating zone and every exit it can reach: the quickest path (edge positions)."""
         G = self.graph(planning=planning)
-        out: dict[str, dict[str, list[int]]] = {}
-        for z in self.zones:
-            dist, paths = nx.single_source_dijkstra(G, z, weight="tau")
-            out[z] = {x: self.path_edges(paths[x]) for x in self.exits if x in paths}
-        return out
+        result = {}
+        for zone in self.zones:
+            distances, paths = nx.single_source_dijkstra(G, zone, weight="tau")
+            result[zone] = {}
+            for exit_name in self.exits:
+                if exit_name in paths:
+                    result[zone][exit_name] = self.path_edges(paths[exit_name])
+        return result
 
-    def exit_of(self, path: list[int]) -> str:
-        return self.node_ids[self.head[path[-1]]]
+    def exit_of(self, edge_list):
+        """The exit at the end of a path."""
+        return self.node_ids[self.head[edge_list[-1]]]
 
-    def summary_table(self) -> list[dict]:
+    def summary_table(self):
+        """One row per edge with its size, capacity and walking time (for the paper's tables)."""
         rows = []
-        for i, e in enumerate(self.edges):
-            rows.append({"edge": e["id"], "kind": e["kind"], "group": e["group"], "use": e["use"],
-                         "width_m": e["width"], "n": e["n"], "length_m": e["length"],
+        for i, edge in enumerate(self.edges):
+            rows.append({"edge": edge["id"], "kind": edge["kind"], "group": edge["group"], "use": edge["use"],
+                         "width_m": edge["width"], "n": edge["n"], "length_m": edge["length"],
                          "cap_pps": round(float(self.cap[i]), 3), "tau_s": round(float(self.tau[i]), 2)})
         return rows
 
-    def group_capacity(self) -> dict[str, float]:
-        out: dict[str, float] = {}
-        for i, e in enumerate(self.edges):
-            if e["group"] in ("corridor", "seating", "mezz_cross_aisle"):
+    def group_capacity(self):
+        """Total capacity of each group of doors/stairs, e.g. all 9 mezzanine doors together."""
+        totals = {}
+        for i, edge in enumerate(self.edges):
+            if edge["group"] in ("corridor", "seating", "mezz_cross_aisle"):
                 continue
-            out[e["group"]] = out.get(e["group"], 0.0) + float(self.cap[i])
-        return out
+            totals[edge["group"]] = totals.get(edge["group"], 0.0) + float(self.cap[i])
+        return totals
 
 
-def make_network(mode: str = "emergency", blocked: dict[str, float] | None = None, known: bool = True,
-                 building: dict | None = None, params: dict | None = None) -> Network:
-    return Network(building or load_building(), params or load_params(), mode=mode,
-                   blocked=dict(blocked or {}), known=known)
+def make_network(mode="emergency", blocked=None, known=True, building=None, params=None):
+    """Shortcut: load the building and the settings, then build the network."""
+    if building is None:
+        building = load_building()
+    if params is None:
+        params = load_params()
+    return Network(building, params, mode=mode, blocked=blocked, known=known)
 
 
-def one_leaf_blocked(building: dict, edge_id: str) -> dict[str, float]:
-    """Obstruction of a single door leaf: an n-leaf edge keeps (n-1)/n of its capacity."""
-    e = next(e for e in building["edges"] if e["id"] == edge_id)
-    return {edge_id: (e["n"] - 1) / e["n"]}
+def one_leaf_blocked(building, edge_id):
+    """Block one door leaf. A door made of n leaves keeps (n-1)/n of its capacity;
+    a single door (n = 1) is blocked completely."""
+    for edge in building["edges"]:
+        if edge["id"] == edge_id:
+            return {edge_id: (edge["n"] - 1) / edge["n"]}
+    raise KeyError(edge_id)

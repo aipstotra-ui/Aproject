@@ -1,69 +1,100 @@
-"""Analytic lower bounds on the egress time (Model I, level 0).
+"""Model I, step 2: quick lower limits on the evacuation time.
 
-For any routing, the time T at which the last person leaves satisfies
-  (B1) T >= max_z [ s_z + tau_z ]          s_z = time zone z starts moving (the fixed reaction delay);
-                                           tau_z = its fastest free-flow path to any exit
-  (B2) T >= t_min + N_S / C_S   for every set of zones S,
-       where C_S is the min-cut capacity (persons/s) separating S from all exits.
-The binding cut identifies *where* the building is throttled (e.g. the nine mezzanine doors).
+These are "it cannot possibly be faster than this" numbers, found with two simple ideas:
+
+  Limit 1 (walking):  the last group to start moving still has to walk out.
+                      time >= reaction delay + the longest of the zones' quickest walks out
+
+  Limit 2 (doors):    everybody has to squeeze through some set of doors. If the narrowest set of doors
+                      lets C people per second through, then N people need at least N / C seconds.
+                      The "narrowest set of doors" is found with a max-flow / min-cut calculation,
+                      which also tells us WHERE the building is throttled.
+
+We do limit 2 for the whole audience and for parts of it (orchestra only, balcony only, ...).
 """
-from __future__ import annotations
-
 import networkx as nx
-import numpy as np
 
-from bailey.flow.network import Network
-from bailey.params import premovement_release, premovement_stats
+from bailey.params import premovement_delay
 
+# groups of seating zones we look at separately (zone names start with O_, Z_M or B_)
 ZONE_SETS = {
-    "all": lambda z: True,
-    "orchestra": lambda z: z.startswith("O_"),
-    "first_floor": lambda z: z.startswith("O_") or z.startswith("Z_M"),
-    "balcony": lambda z: z.startswith("B_"),
+    "all": lambda zone: True,
+    "orchestra": lambda zone: zone.startswith("O_"),
+    "first_floor": lambda zone: zone.startswith("O_") or zone.startswith("Z_M"),
+    "balcony": lambda zone: zone.startswith("B_"),
 }
 
 
-def min_cut(net: Network, zones: list[str]) -> tuple[float, list[str]]:
-    """Max-flow / min-cut from the given zones to all exits. Returns (capacity p/s, cut edge ids)."""
+def min_cut(net, zones):
+    """How many people per second can get from these zones to the exits at most (max-flow),
+    and which edges form the bottleneck (min-cut). Returns (people per second, list of edge names)."""
     G = nx.DiGraph()
-    for i, e in enumerate(net.edges):
+    for i, edge in enumerate(net.edges):
         if net.cap[i] > 1e-9:
-            G.add_edge(e["from"], e["to"], capacity=float(net.cap[i]))
-    for z in zones:
-        G.add_edge("__SRC__", z)            # no capacity attribute = infinite
-    for x in net.exits:
-        G.add_edge(x, "__SINK__")
-    if not all(G.has_node(z) for z in zones):
-        return 0.0, []
-    value, (S, T) = nx.minimum_cut(G, "__SRC__", "__SINK__")
-    cut = [f"{u}->{v}" for u in S for v in G.successors(u) if v in T]
-    return float(value), sorted(cut)
+            G.add_edge(edge["from"], edge["to"], capacity=float(net.cap[i]))
+
+    # one pretend "source" that feeds all chosen zones, and one pretend "sink" behind all exits
+    # (an edge without a 'capacity' value counts as unlimited)
+    for zone in zones:
+        G.add_edge("__SRC__", zone)
+    for exit_name in net.exits:
+        G.add_edge(exit_name, "__SINK__")
+
+    for zone in zones:
+        if not G.has_node(zone):
+            return 0.0, []
+
+    value, (source_side, sink_side) = nx.minimum_cut(G, "__SRC__", "__SINK__")
+
+    # the bottleneck edges go from the source side to the sink side
+    cut_edges = []
+    for u in source_side:
+        for v in G.successors(u):
+            if v in sink_side:
+                cut_edges.append(u + "->" + v)
+    return float(value), sorted(cut_edges)
 
 
-def lower_bounds(net: Network, premovement: str, tol: float | None = None) -> dict:
-    pm = premovement_stats(net.params, premovement)
-    num = net.params["numerics"]
-    tol = num["done_tolerance"] if tol is None else tol
-    dt = num["dt"]
-    cum = np.cumsum(premovement_release(net.params, premovement, dt, num["horizon"]))
+def lower_bounds(net, premovement, tol=None):
+    """Both limits for one network. `premovement` is the reaction-time profile name (e.g. "concert")."""
+    numerics = net.params["numerics"]
+    if tol is None:
+        tol = numerics["done_tolerance"]
+    delay = premovement_delay(net.params, premovement)
+
+    # ---- Limit 1: the longest "quickest walk out" of any zone, after the reaction delay ----
     paths = net.zone_paths(planning=False)
-    tau_z = {z: min(net.path_tau(p) for p in paths[z].values()) for z in net.zones if paths[z]}
-    b1 = 0.0
-    for z, tz in tau_z.items():
-        n_z = net.nodes[z]["seats"]
-        s_z = int(np.argmax(n_z * (1 - cum) <= tol)) * dt   # first step after which < tol remain unreleased
-        b1 = max(b1, s_z + tz)
-    out = {"premovement": premovement, "t_min": pm["t_min"], "t_cap": pm["t_cap"],
-           "B1_last_starter": b1, "max_free_travel": max(tau_z.values()), "cuts": {}}
-    best = b1
-    for name, pred in ZONE_SETS.items():
-        zs = [z for z in net.zones if pred(z)]
-        n_s = float(sum(net.nodes[z]["seats"] for z in zs))
-        c, cut = min_cut(net, zs)
-        b2 = pm["t_min"] + ((n_s - tol) / c if c > 0 else float("inf"))
-        groups = sorted({net.edges[net.eidx[eid]]["group"] for eid in cut})
-        out["cuts"][name] = {"people": n_s, "cut_capacity_pps": c, "bound": b2, "cut_groups": groups,
-                             "cut_edges": cut}
-        best = max(best, b2)
-    out["T_lower_bound"] = best
-    return out
+    quickest_walk = {}
+    for zone in net.zones:
+        if paths[zone]:
+            walk_times = [net.path_tau(path) for path in paths[zone].values()]
+            quickest_walk[zone] = min(walk_times)
+    limit_walk = delay + max(quickest_walk.values())
+
+    result = {
+        "premovement": premovement,
+        "t_min": delay,
+        "t_cap": delay,
+        "B1_last_starter": limit_walk,
+        "max_free_travel": max(quickest_walk.values()),
+        "cuts": {},
+    }
+
+    # ---- Limit 2: people / narrowest-doors capacity, for each group of zones ----
+    best = limit_walk
+    for group_name, belongs in ZONE_SETS.items():
+        chosen_zones = [zone for zone in net.zones if belongs(zone)]
+        people = float(sum(net.nodes[zone]["seats"] for zone in chosen_zones))
+        people_per_second, cut_edges = min_cut(net, chosen_zones)
+        if people_per_second > 0:
+            limit_doors = delay + (people - tol) / people_per_second
+        else:
+            limit_doors = float("inf")
+
+        door_groups = sorted({net.edges[net.eidx[name]]["group"] for name in cut_edges})
+        result["cuts"][group_name] = {"people": people, "cut_capacity_pps": people_per_second,
+                                      "bound": limit_doors, "cut_groups": door_groups, "cut_edges": cut_edges}
+        best = max(best, limit_doors)
+
+    result["T_lower_bound"] = best       # the strongest (largest) of all the limits
+    return result
