@@ -67,3 +67,12 @@ def test_blocked_exit_is_never_used(m2):
     ne = EXITS.index("OUT_NE")
     for run in r.runs:
         assert (run.exit_id != ne).all()
+
+
+def test_fixed_reaction_time(m2):
+    """Everyone starts moving at the scenario's fixed delay (10 s concert, 5 s lecture)."""
+    for scn, delay in (("concert_cm", P["premovement"]["concert"]["delay"]),
+                       ("lecture", P["premovement"]["lecture"]["delay"])):
+        run = m2.run(scn, runs=1).runs[0]
+        assert np.all(run.start_time == delay)
+        assert run.exit_time.min() > delay

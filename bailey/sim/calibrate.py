@@ -49,7 +49,7 @@ def door_flow(params: dict, door_cells: int = 3, people: int = 250, seeds: int =
     """Steady discharge [persons/s per door cell], measured between the 20th and 80th percentile exits."""
     g = toy_room(door_cells=door_cells)
     eng = Engine(g, params)
-    pm = {"median": 0.5, "sigma": 0.1, "q_cap": 0.99, "t_min": 0.0}
+    pm = {"delay": 0.0}
     flows = []
     for s in range(seeds):
         r = eng.run(CAConfig(routing={"nearest": 1.0}, premovement=pm), seed=s, seats={"room": people})

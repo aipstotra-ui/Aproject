@@ -50,29 +50,19 @@ def free_speed(params: dict, kind: str) -> float:
     return params["hydraulic"]["free_speed_factor"] * k_value(params, kind) * kd.get("speed_factor", 1.0)
 
 
+def premovement_delay(params: dict, profile: str) -> float:
+    """Fixed reaction time [s]: everyone in the audience starts moving this long after the alarm."""
+    return float(params["premovement"][profile]["delay"])
+
+
 def premovement_release(params: dict, profile: str, dt: float, horizon: float) -> np.ndarray:
-    """Fraction of an audience that starts moving in each time step [t, t+dt).
-
-    Lognormal(median, sigma) truncated below at t_min and above at quantile q_cap
-    (everyone left at the cap starts then). Returns array of length ceil(horizon/dt) summing to 1.
-    """
-    from scipy.stats import lognorm
-
-    p = params["premovement"][profile]
-    dist = lognorm(s=p["sigma"], scale=p["median"])
-    t_cap = float(dist.ppf(p["q_cap"]))
+    """Fraction of the audience that starts moving in each time step: a single pulse at the delay."""
     n = int(math.ceil(horizon / dt))
-    edges = np.arange(n + 1) * dt
-    cdf = dist.cdf(np.clip(edges, p["t_min"], t_cap))
-    cdf = (cdf - dist.cdf(p["t_min"])) / (dist.cdf(t_cap) - dist.cdf(p["t_min"]))
-    cdf[edges >= t_cap] = 1.0
-    frac = np.diff(cdf)
-    return frac / frac.sum()
+    rel = np.zeros(n)
+    rel[min(n - 1, int(round(premovement_delay(params, profile) / dt)))] = 1.0
+    return rel
 
 
 def premovement_stats(params: dict, profile: str) -> dict:
-    from scipy.stats import lognorm
-
-    p = params["premovement"][profile]
-    dist = lognorm(s=p["sigma"], scale=p["median"])
-    return {"median": p["median"], "t_min": p["t_min"], "t_cap": float(dist.ppf(p["q_cap"]))}
+    d = premovement_delay(params, profile)
+    return {"median": d, "t_min": d, "t_cap": d}

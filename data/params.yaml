@@ -38,16 +38,11 @@ edge_kinds:
   stair_2lane: {k: stair_7.5x10, layer: handrail,       speed_factor: 1.00}  # foyer balcony stairs: centre barrier
   hesitation: {k: level,        layer: theatre_seating, speed_factor: 1.00}  # virtual: discovery delay, no capacity limit
 
-# Pre-movement (time from alarm until a person starts moving) -- lognormal, truncated at quantile q_cap.
-# Sources: PD 7974-6:2019 (BSI) Table C.1 categories; Purser & Bensilum (2001); SFPE ch. 64.
-#   Category C (theatre/cinema, awake, unfamiliar, attended by trained staff, M2 alarm): first-occupant ~0.5 min,
-#   99th percentile ~ +2 min  -> lognormal with median ~30-45 s is a reasonable, mildly optimistic central case.
-#   Category A (offices/education, awake, familiar, drilled): first ~0.5 min, 99th ~ +1 min.
+# Reaction (pre-movement) time: everyone starts moving exactly this many seconds after the alarm.
+# Fixed and identical for every person (team decision; replaces the earlier lognormal model).
 premovement:
-  concert_cm:    {median: 35.0, sigma: 0.45, q_cap: 0.99, t_min: 5.0}   # ASSUMPTION within PD 7974-6 cat. C (staff present)
-  concert_nocm:  {median: 50.0, sigma: 0.55, q_cap: 0.99, t_min: 10.0}  # ASSUMPTION, used as counterfactual
-  lecture:       {median: 20.0, sigma: 0.50, q_cap: 0.99, t_min: 3.0}   # ASSUMPTION within cat. A (drilled students)
-  normal_exit:   {median: 15.0, sigma: 0.80, q_cap: 0.99, t_min: 0.0}   # ordinary departure (Q1, optional)
+  concert: {delay: 10.0}   # concert audience
+  lecture: {delay: 5.0}    # drilled students
 
 # Time to realise an exit is blocked and turn around (unknown obstruction), per person [s]. ASSUMPTION.
 blocked_discovery_delay: 10.0
@@ -56,7 +51,7 @@ blocked_discovery_delay: 10.0
 numerics:
   dt: 1.0              # time step of fluid simulation and time-expanded LP [s]
   horizon: 420         # [s] must exceed the slowest scenario
-  done_tolerance: 0.5  # "everyone out" when fewer than this many people remain (fluid model)
+  done_tolerance: 0.01 # "everyone out" when fewer than this many people remain (fluid model + LP)
 
 # ------------------------------------------------------------------ Model II: floor-field cellular automaton
 # Burstedde et al. (2001) Physica A 295; Kirchner & Schadschneider (2002) Physica A 312;

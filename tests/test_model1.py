@@ -56,8 +56,8 @@ def test_single_door_matches_analytic():
 def test_spillback_never_speeds_up():
     net = make_network("emergency")
     ps = PathSet.build(net)
-    rel = premovement_release(P, "concert_cm", 1.0, 420)
-    frac = build_policy(ps, {"habit": 1}, rel, 1.0, 420, P["premovement"]["concert_cm"], iters=5)
+    rel = premovement_release(P, "concert", 1.0, 420)
+    frac = build_policy(ps, {"habit": 1}, rel, 1.0, 420, P["premovement"]["concert"], iters=5)
     with_sb = simulate(net, ps, frac, rel, 1.0, 420, spillback=True)
     without = simulate(net, ps, frac, rel, 1.0, 420, spillback=False)
     assert with_sb.T >= without.T - 1e-9
@@ -67,13 +67,13 @@ def test_spillback_never_speeds_up():
 def concert():
     net = make_network("emergency")
     ps = PathSet.build(net)
-    rel = premovement_release(P, "concert_cm", 1.0, 420)
+    rel = premovement_release(P, "concert", 1.0, 420)
     return net, ps, rel
 
 
 def test_people_are_conserved(concert):
     net, ps, rel = concert
-    frac = build_policy(ps, {"nearest": 1}, rel, 1.0, 420, P["premovement"]["concert_cm"], iters=5)
+    frac = build_policy(ps, {"nearest": 1}, rel, 1.0, 420, P["premovement"]["concert"], iters=5)
     res = simulate(net, ps, frac, rel, 1.0, 420)
     assert sum(res.exit_totals.values()) == pytest.approx(net.N, abs=0.6)
     for i, z in enumerate(net.zones):  # each zone's shares sum to one
@@ -84,10 +84,10 @@ def test_lp_optimum_is_a_lower_bound(concert):
     """T* (quickest flow) <= every simulated routing, and >= the analytic bounds."""
     net, ps, rel = concert
     q = solve_quickest(net, rel, 1.0, 300)
-    lb = lower_bounds(net, "concert_cm")
+    lb = lower_bounds(net, "concert")
     assert q.T >= lb["T_lower_bound"] - 1.0
     for spec in ({"ue": 1}, {"habit": 1}, {"assigned": 0.6, "habit": 0.25, "nearest": 0.15}):
-        frac = build_policy(ps, spec, rel, 1.0, 420, P["premovement"]["concert_cm"], iters=8)
+        frac = build_policy(ps, spec, rel, 1.0, 420, P["premovement"]["concert"], iters=8)
         res = simulate(net, ps, frac, rel, 1.0, 420)
         assert q.T <= res.T + 1e-9, spec
 
@@ -95,14 +95,14 @@ def test_lp_optimum_is_a_lower_bound(concert):
 def test_unknown_obstruction_costs_at_least_as_much_as_known():
     B = load_building()
     blk = one_leaf_blocked(B, "C090->FOYER")
-    rel = premovement_release(P, "concert_cm", 1.0, 420)
+    rel = premovement_release(P, "concert", 1.0, 420)
     T = {}
     for known in (True, False):
         net = make_network("emergency", blk, known=known)
         ps = PathSet.build(net)
         plan = net if known else make_network("emergency")
         frac = build_policy(PathSet(plan, ps.commodities, ps.by_zone), {"nearest": 1}, rel, 1.0, 420,
-                            P["premovement"]["concert_cm"], iters=8)
+                            P["premovement"]["concert"], iters=8)
         T[known] = simulate(net, ps, frac, rel, 1.0, 420).T
     assert math.isfinite(T[False])
     assert T[False] >= T[True] - 2.0
@@ -114,7 +114,7 @@ def test_dead_end_obstruction_walks_back():
     blk = one_leaf_blocked(B, "V_W->OUT_NW")
     net = make_network("emergency", blk, known=False)
     ps = PathSet.build(net)
-    rel = premovement_release(P, "concert_cm", 1.0, 420)
+    rel = premovement_release(P, "concert", 1.0, 420)
     frac = np.zeros(len(ps.commodities))
     west = {"O_W", "B_W", "Z_M1"}             # west-side zones head for the (blocked) NW exit,
     for z in net.zones:                       # everyone else takes their fastest path

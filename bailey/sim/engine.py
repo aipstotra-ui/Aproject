@@ -11,7 +11,7 @@ executed with probability speed(i, j) * cell / step length (slower in seats and 
 steps cover more ground). If several agents want the same cell, one random winner moves, but with
 probability mu (friction) nobody does (Kirchner et al. 2003). Agents entering an exit cell leave.
 
-Behaviour on top of the physics (bailey/behavior/choice.py): pre-movement delays, strategic exit
+Behaviour on top of the physics (bailey/behavior/choice.py): a fixed reaction delay, strategic exit
 choice by type, Crowd Managers converting nearby agents, discovery of unknown obstructions (pause +
 re-plan) and word-of-mouth spreading of that information.
 """
@@ -20,7 +20,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import numpy as np
-from scipy.stats import lognorm
 
 from bailey.behavior import choice as C
 from bailey.sim.fields import FieldSolver
@@ -30,7 +29,7 @@ from bailey.sim.grid import EXITS, CellGrid
 @dataclass
 class CAConfig:
     routing: dict[str, float]                   # behaviour mix, Model I vocabulary
-    premovement: dict                           # lognormal profile from params.yaml
+    premovement: dict                           # {"delay": s}: fixed reaction time from params.yaml
     blocked: set[str] = field(default_factory=set)   # aperture ids (CA) that are obstructed
     known: bool = True                          # obstruction known at t = 0
     crowd_managers: bool = False
@@ -114,10 +113,7 @@ class Engine:
         names = list(mix); probs = np.array([mix[k] for k in names]) / sum(mix.values())
         atype = np.array([C.TYPE_OF[names[i]] for i in rng.choice(len(names), size=A, p=probs)])
         k_d = np.where(rng.random(A) < ca["herding_share"], ca["k_d_herd"], ca["k_d"])
-        pm = cfg.premovement
-        dist = lognorm(s=pm["sigma"], scale=pm["median"])
-        lo, hi = dist.cdf(pm["t_min"]), pm["q_cap"]
-        start = dist.ppf(lo + rng.random(A) * (hi - lo))
+        start = np.full(A, float(cfg.premovement["delay"]))  # fixed reaction time, same for everyone
 
         has_block = bool(self.blocked)
         informed = np.full(A, (not has_block) or cfg.known)

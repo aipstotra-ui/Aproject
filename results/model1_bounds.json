@@ -1,15 +1,15 @@
 {
  "concert_cm": {
-  "premovement": "concert_cm",
-  "t_min": 5.0,
-  "t_cap": 99.70388118119044,
-  "B1_last_starter": 127.57152824001398,
+  "premovement": "concert",
+  "t_min": 10.0,
+  "t_cap": 10.0,
+  "B1_last_starter": 37.86764705882353,
   "max_free_travel": 27.86764705882353,
   "cuts": {
    "all": {
     "people": 1329.0,
     "cut_capacity_pps": 16.710526315789473,
-    "bound": 84.53070866141732,
+    "bound": 89.53011023622048,
     "cut_groups": [
      "foyer_inner",
      "portico",
@@ -30,7 +30,7 @@
    "orchestra": {
     "people": 527.0,
     "cut_capacity_pps": 9.633082706766919,
-    "bound": 59.70730565095222,
+    "bound": 64.70626756166094,
     "cut_groups": [
      "access",
      "stage_escape"
@@ -49,7 +49,7 @@
    "first_floor": {
     "people": 1013.0,
     "cut_capacity_pps": 16.710526315789473,
-    "bound": 65.6204724409449,
+    "bound": 70.61987401574804,
     "cut_groups": [
      "foyer_inner",
      "portico",
@@ -70,7 +70,7 @@
    "balcony": {
     "people": 316.0,
     "cut_capacity_pps": 5.3007518796992485,
-    "bound": 64.61418439716311,
+    "bound": 69.61229787234042,
     "cut_groups": [
      "balc_foyer_stair",
      "balc_stage_stair"
@@ -83,19 +83,19 @@
     ]
    }
   },
-  "T_lower_bound": 127.57152824001398
+  "T_lower_bound": 89.53011023622048
  },
  "concert_nocm": {
-  "premovement": "concert_nocm",
+  "premovement": "concert",
   "t_min": 10.0,
-  "t_cap": 179.74053453324416,
-  "B1_last_starter": 207.6081815920677,
+  "t_cap": 10.0,
+  "B1_last_starter": 37.86764705882353,
   "max_free_travel": 27.86764705882353,
   "cuts": {
    "all": {
     "people": 1329.0,
     "cut_capacity_pps": 16.710526315789473,
-    "bound": 89.53070866141732,
+    "bound": 89.53011023622048,
     "cut_groups": [
      "foyer_inner",
      "portico",
@@ -116,7 +116,7 @@
    "orchestra": {
     "people": 527.0,
     "cut_capacity_pps": 9.633082706766919,
-    "bound": 64.70730565095222,
+    "bound": 64.70626756166094,
     "cut_groups": [
      "access",
      "stage_escape"
@@ -135,7 +135,7 @@
    "first_floor": {
     "people": 1013.0,
     "cut_capacity_pps": 16.710526315789473,
-    "bound": 70.6204724409449,
+    "bound": 70.61987401574804,
     "cut_groups": [
      "foyer_inner",
      "portico",
@@ -156,7 +156,7 @@
    "balcony": {
     "people": 316.0,
     "cut_capacity_pps": 5.3007518796992485,
-    "bound": 69.61418439716311,
+    "bound": 69.61229787234042,
     "cut_groups": [
      "balc_foyer_stair",
      "balc_stage_stair"
@@ -169,19 +169,19 @@
     ]
    }
   },
-  "T_lower_bound": 207.6081815920677
+  "T_lower_bound": 89.53011023622048
  },
  "lecture": {
   "premovement": "lecture",
-  "t_min": 3.0,
-  "t_cap": 64.00148015885924,
-  "B1_last_starter": 91.86912721768277,
+  "t_min": 5.0,
+  "t_cap": 5.0,
+  "B1_last_starter": 32.86764705882353,
   "max_free_travel": 27.86764705882353,
   "cuts": {
    "all": {
     "people": 1329.0,
     "cut_capacity_pps": 16.710526315789473,
-    "bound": 82.53070866141732,
+    "bound": 84.53011023622048,
     "cut_groups": [
      "foyer_inner",
      "portico",
@@ -202,7 +202,7 @@
    "orchestra": {
     "people": 527.0,
     "cut_capacity_pps": 9.633082706766919,
-    "bound": 57.70730565095222,
+    "bound": 59.70626756166094,
     "cut_groups": [
      "access",
      "stage_escape"
@@ -221,7 +221,7 @@
    "first_floor": {
     "people": 1013.0,
     "cut_capacity_pps": 16.710526315789473,
-    "bound": 63.62047244094489,
+    "bound": 65.61987401574804,
     "cut_groups": [
      "foyer_inner",
      "portico",
@@ -242,7 +242,7 @@
    "balcony": {
     "people": 316.0,
     "cut_capacity_pps": 5.3007518796992485,
-    "bound": 62.614184397163115,
+    "bound": 64.61229787234042,
     "cut_groups": [
      "balc_foyer_stair",
      "balc_stage_stair"
@@ -255,6 +255,6 @@
     ]
    }
   },
-  "T_lower_bound": 91.86912721768277
+  "T_lower_bound": 84.53011023622048
  }
 }

@@ -1,9 +1,8 @@
 """Analytic lower bounds on the egress time (Model I, level 0).
 
 For any routing, the time T at which the last person leaves satisfies
-  (B1) T >= max_z [ s_z + tau_z ]          s_z = time by which zone z has fewer than `tol` people not yet
-                                           moving (consistent with the "everyone out" tolerance of the
-                                           fluid model and LP); tau_z = its fastest free-flow path
+  (B1) T >= max_z [ s_z + tau_z ]          s_z = time zone z starts moving (the fixed reaction delay);
+                                           tau_z = its fastest free-flow path to any exit
   (B2) T >= t_min + N_S / C_S   for every set of zones S,
        where C_S is the min-cut capacity (persons/s) separating S from all exits.
 The binding cut identifies *where* the building is throttled (e.g. the nine mezzanine doors).

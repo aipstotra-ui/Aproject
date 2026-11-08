@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import numpy as np
 from scipy.optimize import linprog
-from scipy.stats import lognorm
 
 from bailey.flow.fluid import PathSet, simulate
 from bailey.flow.network import Network
@@ -67,30 +66,21 @@ def classes_fixed_exit(paths: PathSet, exit_share: dict[str, dict[str, float]], 
     return out
 
 
-def assigned(paths: PathSet, premovement: dict, n_grid: int = 25, q_bulk: float = 0.95) -> tuple[np.ndarray, float]:
-    """Static system-optimal assignment (LP). Returns (frac, LP bound on makespan).
+def assigned(paths: PathSet, premovement: dict) -> tuple[np.ndarray, float]:
+    """Static system-optimal assignment (LP). Returns (frac, LP value of the makespan).
 
     For a routing x (persons per commodity), the load on edge e is l_e = sum_{k ∋ e} x_k.
-    People reach e no earlier than (pre-movement + a_e), where a_e is the fastest free-flow time from
-    any origin to e. With pre-movement CDF F, the queue at e cannot clear before
-        a_e + s + l_e (1 - F(s)) / c_e      for every s,
-    and the last person still needs tau_e + b_e to get out. Hence, for every e and grid value s,
-        T >= a_e + s + tau_e + b_e + l_e (1 - F(s)) / c_e,
-    plus T >= t_cap + (fastest path of zone z). Minimise T, then (tie-break) total travel time.
-
-    The s-grid stops at the q_bulk quantile of pre-movement: beyond it the constraint would force every
-    lightly used path to carry a fluid "last straggler", which the simulation's tolerance ignores.
-    The LP value is therefore an *approximation*, not a bound; the rigorous lower bound is T* from
-    quickest_lp.solve_quickest.
+    Everyone starts moving at the same time d (fixed reaction time) and reaches e no earlier than
+    d + a_e, where a_e is the fastest free-flow time from any origin to e. The queue at e therefore
+    cannot clear before d + a_e + l_e / c_e, and the last person still needs tau_e + b_e to get out:
+        T >= d + a_e + tau_e + b_e + l_e / c_e      for every used edge e,
+        T >= d + (fastest path of zone z)           for every zone z.
+    Minimise T, then (tie-break) total travel time. This static LP is an approximation for choosing
+    routes; the rigorous lower bound is T* from quickest_lp.solve_quickest.
     """
     net = paths.net
     K = len(paths.commodities)
-    dist = lognorm(s=premovement["sigma"], scale=premovement["median"])
-    t_cap = float(dist.ppf(premovement["q_cap"]))
-    s_max = float(dist.ppf(q_bulk))
-    s_grid = np.linspace(premovement["t_min"], s_max, n_grid)
-    F0 = dist.cdf(premovement["t_min"])
-    F = np.clip((dist.cdf(s_grid) - F0) / (dist.cdf(t_cap) - F0), 0, 1)
+    d = float(premovement["delay"])
 
     E = len(net.edges)
     a = np.full(E, np.inf); b = np.full(E, np.inf)
@@ -107,14 +97,13 @@ def assigned(paths: PathSet, premovement: dict, n_grid: int = 25, q_bulk: float 
     # variables: x_0..x_{K-1}, T
     rows, rhs = [], []
     for e in used:
-        for s, Fs in zip(s_grid, F):
-            row = np.zeros(K + 1)
-            row[:K] = inc[e] * (1 - Fs) / net.cap[e]
-            row[K] = -1.0
-            rows.append(row); rhs.append(-(a[e] + s + net.tau[e] + b[e]))
-    for z in net.zones:  # last starter
+        row = np.zeros(K + 1)
+        row[:K] = inc[e] / net.cap[e]
+        row[K] = -1.0
+        rows.append(row); rhs.append(-(d + a[e] + net.tau[e] + b[e]))
+    for z in net.zones:  # fastest walk out of each zone
         row = np.zeros(K + 1); row[K] = -1.0
-        rows.append(row); rhs.append(-(t_cap + min(paths.tau(k) for k in paths.by_zone[z])))
+        rows.append(row); rhs.append(-(d + min(paths.tau(k) for k in paths.by_zone[z])))
     A_ub = np.array(rows); b_ub = np.array(rhs)
     A_eq = np.zeros((len(net.zones), K + 1)); b_eq = np.zeros(len(net.zones))
     for i, z in enumerate(net.zones):
