@@ -1,9 +1,0 @@
-# Q3: 1,329 students in a lecture. No Crowd Managers, but students know the building, take part in
-# fire drills and react faster (5 s vs 10 s). ASSUMPTION: 60% head for the nearest exit they know, 40% by habit.
-name: lecture
-question: Q3
-label: "Lecture, drilled students"
-mode: emergency
-premovement: lecture
-routing: {nearest: 0.60, habit: 0.40}
-crowd_managers: false

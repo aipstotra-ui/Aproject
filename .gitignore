@@ -1,8 +1,3 @@
 __pycache__/
 *.pyc
 .venv/
-.pytest_cache/
-results/*.csv
-figures/*.png
-!results/.gitkeep
-!figures/.gitkeep
