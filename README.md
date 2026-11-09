@@ -159,7 +159,7 @@ Every stair opening, mezzanine door and foyer door has a ticket machine.
 
 If two people can't move and each wants the other's square, they swap places half of the time.
 Without this rule, two streams walking in opposite directions can block each other forever: this happened in one test run at the east end of the corridor.
-Swaps never happen inside a doorway, so the ticket machines still decide who goes through.
+Stepping into a doorway by swapping still needs a ticket, so the ticket machines still decide who goes through. (Before the barrier test we did not allow swaps in doorways at all; with a barrier, two people met head-on inside mezz door 4 and blocked it for good.)
 
 ### 9. Repeat 30 times per case
 

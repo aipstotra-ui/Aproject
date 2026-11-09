@@ -100,6 +100,7 @@ MEZZANINE_DOORS = [10, 30, 50, 70, 90, 110, 130, 150, 170]   # 9 doors into the 
 FOYER_DOORS = [80, 90, 100]                        # 3 doors corridor -> foyer (1.8 m)
 PORTICO_DOORS = {"P1": 25, "P2": 50, "P3": 130, "P4": 155}   # 4 side exits (1.6 m)
 FRONT_DOORS_X = [-6.8, -3.4, 0.0, 3.4, 6.8]        # 5 front doors of the foyer (1.8 m each)
+BARRIER_THICKNESS = 1.0      # a temporary barrier is a 1 m thick wall across the corridor
 
 EXIT_NAMES = ["FRONT", "NW", "NE", "P1", "P2", "P3", "P4"]
 
@@ -155,8 +156,9 @@ def which_opening(x, y, radius, angles, width):
     return None
 
 
-def make_hall():
+def make_hall(barriers=()):
     """Return (grid, exit_of_square, gate_of_square).
+    barriers = angles (degrees) where a temporary barrier closes the corridor (see barriers.py).
     grid[row, col] is WALL, FLOOR, SEAT or EXIT.
     exit_of_square[(row, col)] is the name of the exit for every EXIT square.
     gate_of_square[(row, col)] is the name of the doorway ("gate") for every square of a
@@ -191,6 +193,10 @@ def make_hall():
                         gate_of_square[(row, col)] = f"mezz door {number}"
                 elif r < CORRIDOR_END:
                     kind = FLOOR                      # corridor
+                    for angle in barriers:            # a temporary barrier across the corridor
+                        bx, by = point_on_circle(r, angle)
+                        if math.hypot(x - bx, y - by) <= BARRIER_THICKNESS / 2:
+                            kind = WALL
                 elif r < OUTER_WALL_END:
                     number = which_opening(x, y, CORRIDOR_END, FOYER_DOORS, 1.8)
                     if number:
@@ -437,7 +443,8 @@ def choose_square(person, distance, neighbour_lists, occupied, crowd):
             continue                                       # somebody is standing there
         change = dist[square] - dist[here]
         options.append(square)
-        weights.append(math.exp(-PULL * change - CROWD * crowd[square]))
+        score = -PULL * change - CROWD * crowd[square]
+        weights.append(math.exp(min(score, 50.0)))        # cap it: e^50 is already 'certainly this one'
     return random.choices(options, weights=weights)[0]
 
 
@@ -490,11 +497,11 @@ def doorway_rate(doorway, rates):
     return gate_rate(doorway, rates)
 
 
-def swap_stuck_pairs(ready, moved, route_maps, neighbour_lists, gate_of_square):
+def swap_stuck_pairs(ready, moved, route_maps, neighbour_lists, gate_of_square, tickets, gate_times, time):
     """People who could not move look at their favourite square (the neighbour closest to their exit,
     even if someone stands there). If two of them want each other's square, they swap with
     SWAP_CHANCE. Without this, two streams walking in opposite directions can block each other forever.
-    We don't swap inside doorways, so the ticket machines still decide who goes through."""
+    Swapping INTO a doorway still needs a ticket, so the ticket machines still decide who goes through."""
     stuck_at = {}                                          # square -> stuck person standing there
     for person in ready:
         if id(person) not in moved and person["out_time"] is None:
@@ -511,9 +518,15 @@ def swap_stuck_pairs(ready, moved, route_maps, neighbour_lists, gate_of_square):
         other_favourite = min(neighbour_lists[favourite], key=lambda nxt: other_dist[nxt])
         if other_favourite != square:
             continue                                       # they don't face each other
-        if square in gate_of_square or favourite in gate_of_square:
-            continue
-        if random.random() < SWAP_CHANCE:
+        # who would step INTO a doorway by swapping? each of them needs a ticket
+        entering = [(p, gate_of_square[new]) for p, new in ((person, favourite), (other, square))
+                    if new in gate_of_square and gate_of_square.get(p["square"]) != gate_of_square[new]]
+        enough_tickets = all(tickets[gate] >= sum(1 for _, g in entering if g == gate) for _, gate in entering)
+        if enough_tickets and random.random() < SWAP_CHANCE:
+            for p, gate in entering:
+                tickets[gate] -= 1
+                gate_times[gate].append(time)
+                p["path"].append(gate)
             person["square"], other["square"] = favourite, square
         # each pair is handled once
         del stuck_at[favourite]
@@ -623,7 +636,7 @@ def run_once(seed, hall, case, rates):
             moved.add(id(winner))
 
         # two people stuck face to face squeeze past each other (swap places)
-        swap_stuck_pairs(ready, moved, route_maps, neighbour_lists, gate_of_square)
+        swap_stuck_pairs(ready, moved, route_maps, neighbour_lists, gate_of_square, tickets, gate_times, time)
 
         assert occupied.max() <= 1, "two people on one square"
         times_occupied += occupied
@@ -633,10 +646,11 @@ def run_once(seed, hall, case, rates):
     return people, times_occupied, step, gate_times
 
 
-def setup():
+def setup(barriers=()):
     """Build everything that is the same in every run: the map, neighbours, door widths and
-    distance maps. Returns them together in one dictionary."""
-    grid, exit_of_square, gate_of_square, stage_opening_of_square = make_hall()
+    distance maps. Returns them together in one dictionary.
+    barriers = angles of temporary barriers in the corridor (none by default)."""
+    grid, exit_of_square, gate_of_square, stage_opening_of_square = make_hall(barriers)
     neighbour_lists = make_neighbour_lists(grid)
     distance = {}
     for name in EXIT_NAMES:
