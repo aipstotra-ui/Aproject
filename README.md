@@ -17,7 +17,7 @@ We simulate the two **emergency** cases from our data, plus the concert with Cro
 | 4 | Concert audience | case 4 | 10 s | 60% follow the ushers, 25% habit, 15% nearest exit |
 | 4 + CM | Concert audience, with Crowd Managers | case 4 | 10 s | **80% follow the ushers**, 12.5% habit, 7.5% nearest |
 
-For the Crowd Manager scenario we assume the Crowd Managers **halve the number of people who ignore the ushers** (40% → 20%). The rest keep the concert's habit : nearest ratio of 25 : 15. We don't use 100%: in a real evacuation some people never listen, and Question 4 (barriers and LEDs) needs room to improve on it. Because the true share is unknown, we also run a sweep from 60% to 100% guided (see below).
+For the Crowd Manager scenario we assume the Crowd Managers **halve the number of people who ignore the ushers** (40% → 20%). The rest keep the concert's habit : nearest ratio of 25 : 15. We don't use 100%: in a real evacuation some people never listen, and Question 4 (barriers and LEDs) needs room to improve on it.
 Everything else is the same as case 4: the same measured doorway rates, and the same reaction time.
 
 ## How to run
@@ -37,9 +37,8 @@ It takes about 3–4 minutes. The results go into the `output/` folder.
 | `main.py` | Runs each case 30 times, prints a summary and draws the figures. |
 | `barriers.py` | Question 4a: corridor barriers, 2 layouts × 30 runs (about 6 minutes). |
 | `leds.py` | Question 4b: one run with 100% guided, coloured into LED sections. |
-| `sweep.py` | Runs the concert with 60%, 70%, 80%, 90% and 100% guided (about 9 minutes). |
 | `data/` | Our measured bottleneck data: `stairs.csv`, `corridor.csv`, `foyer_doors.csv`. |
-| `output/` | `map.png`, `escape_time.png`, `doorway_times.png`, `heatmap.png`, `flow_check.png`, `results.csv`, `guided_sweep.png`, `guided_sweep.csv` |
+| `output/` | `map.png`, `escape_time.png`, `doorway_times.png`, `heatmap.png`, `flow_check.png`, `results.csv` |
 
 ## Our bottleneck data
 
@@ -264,21 +263,6 @@ People don't spread evenly over the 9 mezzanine doors: the doors closest to the 
 This points to where guidance (ushers or LED signs) could help most: spreading people over the mezzanine doors and away from the foyer.
 The Crowd Manager scenario confirms it: with 80% instead of 60% following the ushers' plan, the concert gets out about 15 s faster.
 
-### How much does following the plan matter? (`python sweep.py`)
-
-The share of people who follow Crowd Managers is a guess, so we ran the concert emergency with 60% to 100% guided (30 runs each; the non-guided people split 25 : 15 between habit and nearest).
-
-| People guided | 60% (no CM) | 70% | **80% (our CM case)** | 90% | 100% (best case) |
-|---|---|---|---|---|---|
-| Calculated time (average ± spread) | 190 ± 17 s | 183 ± 16 s | **175 ± 13 s** | 166 ± 14 s | 158 ± 12 s |
-| Runs within 180 s | 11 of 30 | 12 of 30 | **21 of 30** | 24 of 30 | 30 of 30 |
-
-![guided sweep](output/guided_sweep.png)
-
-- Every extra 10% of people who follow the plan saves about **8 s**.
-- The **average** drops below 180 s from about 75% guided, but **every** run makes it only at 100%.
-- So Crowd Managers alone help, but they aren't enough on their own: Question 4 (barriers and LEDs) has to close the remaining gap.
-
 ## Question 4a: barriers in the corridor (`python barriers.py`)
 
 We put a barrier (a 1 m wall) across the corridor next to the foyer, always on both sides of the hall.
@@ -330,7 +314,7 @@ The strips in each coloured area point to that exit.
 
 - **The middle third of the hall, nearest the foyer, goes to the FRONT.** The rest fans out to the side exits, each side exit getting a wedge of the orchestra and mezzanine that leads straight to it.
 - **Balcony:** the two stage-side stairs go to NW / NE, and the two foyer-side stairs go to the FRONT.
-- **Time with perfect guidance:** 157.5 s on average over 30 runs (from `sweep.py`, 100% guided), with all 30 runs within 180 s. This single run took 141 s.
+- **Time with perfect guidance:** this single run took 141 s.
 
 ## Simplifications
 
@@ -341,6 +325,6 @@ The strips in each coloured area point to that exit.
 - **The calculation** assumes each doorway works at its full rate while people wait, and uses the shortest walk between doorways. It doesn't add the time a doorway sits idle because the doorway before it is slow, except through the "last person arrives" rule.
 - **Map:** one floor, simplified shapes, door widths estimated from the CMCM drawings. The balcony itself isn't drawn.
 - **Speed and reaction:** everyone walks at the same speed, and reaction time is fixed and the same for everyone.
-- **Ushers / Crowd Managers:** modelled only through the exit each guided person is given (the ushers' spread-out plan). They don't stand in the hall or talk to people on the way. In the Crowd Manager scenario we assume 80% follow them (an assumption; `sweep.py` shows 60–100%).
+- **Ushers / Crowd Managers:** modelled only through the exit each guided person is given (the ushers' spread-out plan). They don't stand in the hall or talk to people on the way. In the Crowd Manager scenario we assume 80% follow them (an assumption).
 
 All the settings are named constants at the top of `simulation.py`.

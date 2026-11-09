@@ -1,14 +1,3 @@
-"""
-Question 4b: where should the LED light strips point?
-
-    python leds.py
-
-We run the concert ONCE with 100 % guided people (perfect guidance: everyone follows the
-Crowd Managers' plan), and colour every seat by the exit its person was sent to.
-The coloured areas are the LED sections: the strips in each area point to that exit.
-(The evacuation time for 100 % guided over 30 runs is in sweep.py: 157.5 s.)
-Results: output/led_map.png and output/led_sections.csv
-"""
 import csv
 import math
 import os
@@ -26,7 +15,7 @@ import simulation as sim
 
 OUTPUT_FOLDER = "output"
 SEED = 0
-VOTE_RADIUS = 2.0          # metres: each seat takes the exit most people within this distance used
+VOTE_RADIUS = 2.0
 CASE = {"case": "LED", "data_case": 4, "name": "Concert, emergency, perfect guidance",
         "reaction": 10.0, "guided": 1.0, "habit": 0.0, "nearest": 0.0}
 EXIT_COLOURS = {"FRONT": "#e8833a", "NW": "#1f77b4", "NE": "#17becf", "P1": "#2ca02c",
@@ -43,30 +32,25 @@ def main():
     last_out, _ = sim.calculated_escape_time(people, hall, rates)
     print(f"one run, 100 % guided: last person out after {last_out:.1f} s (calculated)")
 
-    # 1. every person who started in a seat: where they sat and which exit they used
     seated = [(p["start_square"], p["exit_used"]) for p in people if p["stair"] is None]
 
-    # 2. colour every seat square by the exit MOST people within 1.5 m of it used (a "majority vote").
-    #    This gives clean sections, like real LED strips would need, and empty seats get a colour too.
     exit_number = {name: i for i, name in enumerate(sim.EXIT_NAMES)}
     where = np.array([square for square, _ in seated])
     which = np.array([exit_number[e] for _, e in seated])
     section = np.full(grid.shape, -1)
-    radius = VOTE_RADIUS / sim.CELL                       # in squares
+    radius = VOTE_RADIUS / sim.CELL
     for row, col in zip(*np.nonzero(grid == sim.SEAT)):
         squared_distance = (where[:, 0] - row) ** 2 + (where[:, 1] - col) ** 2
         nearby = which[squared_distance <= radius ** 2]
         if len(nearby) == 0:
-            nearby = [which[np.argmin(squared_distance)]]   # nobody close: copy the closest person
+            nearby = [which[np.argmin(squared_distance)]]
         section[row, col] = Counter(nearby).most_common(1)[0][0]
 
-    # 3. balcony staircases: which exits their people used
     balcony = {}
     for p in people:
         if p["stair"] is not None:
             balcony.setdefault(p["stair_name"], Counter())[p["exit_used"]] += 1
 
-    # ---- table: share of each seating area going to each exit ----
     rows = []
     for area in ("orchestra", "mezzanine"):
         group = [e for (r, c), e in seated
@@ -82,7 +66,6 @@ def main():
     for row in rows:
         print(f"  {row['area']:22s} " + ", ".join(f"{e} {row[e]}" for e in sim.EXIT_NAMES if row[e]))
 
-    # ---- figure: the LED map ----
     extent = [sim.X_MIN, sim.X_MAX, sim.Y_MIN, sim.Y_MAX]
     fig, ax = plt.subplots(figsize=(11, 8))
     background = np.where(grid == sim.WALL, 0, 1)
@@ -90,7 +73,6 @@ def main():
     colours = ListedColormap([EXIT_COLOURS[e] for e in sim.EXIT_NAMES])
     ax.imshow(np.ma.masked_where(section < 0, section), cmap=colours, vmin=-0.5, vmax=len(sim.EXIT_NAMES) - 0.5,
               extent=extent, interpolation="nearest")
-    # exits: a coloured dot with the name
     for name in sim.EXIT_NAMES:
         squares = [s for s, e in hall["exit_of_square"].items() if e == name]
         x = np.mean([sim.square_centre(*s)[0] for s in squares])
@@ -99,7 +81,6 @@ def main():
         ax.annotate(name, (x, y), textcoords="offset points", xytext=(0, 12), ha="center", fontsize=10,
                     fontweight="bold", color="black", zorder=4,
                     bbox=dict(facecolor="white", edgecolor="none", pad=1, alpha=0.8))
-    # balcony staircases: a square marker in the colour of their main exit
     for name, how_many, spot in sim.BALCONY_STAIRS:
         counts = balcony["balcony " + name]
         main_exit, n = counts.most_common(1)[0]

@@ -1,26 +1,10 @@
-"""
-Run the Bailey Hall simulation for the two emergency cases, many times each, and make the figures.
-
-    python main.py
-
-The main result is the CALCULATED time for the last person to get out (simulation.calculated_escape_time):
-people per doorway (counted in the simulation) / the doorway's flow rate, chained from the seats to the exits.
-
-Results go into the folder output/:
-    map.png           the hall as the computer sees it (doorways with data marked)
-    escape_time.png   calculated time for the last person to get out, every run, per case
-    doorway_times.png when each doorway lets its last person through (which doorway decides the time)
-    heatmap.png      how crowded each square was, one panel per case
-    flow_check.png   busiest flow through the stairs / mezzanine doors / foyer doors: simulation vs our data
-    results.csv      one line per run
-"""
 import csv
 import os
 import statistics
 
 import matplotlib
 
-matplotlib.use("Agg")                     # draw into files, no window needed
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import ListedColormap
@@ -28,42 +12,35 @@ from matplotlib.patches import Patch
 
 import simulation as sim
 
-NUMBER_OF_RUNS = 30        # how many times we repeat each case
-TIME_LIMIT = 180           # the fire code says everyone must be out within 180 s
+NUMBER_OF_RUNS = 30
+TIME_LIMIT = 180
 OUTPUT_FOLDER = "output"
-CASE_COLOURS = ["#1baf7a", "#6250d6", "#eb6834"]   # case 3 (students), case 4 (concert), concert + Crowd Managers
+CASE_COLOURS = ["#1baf7a", "#6250d6", "#eb6834"]
 PLACES = [("stair", "stairs", "Stairs (orchestra -> mezzanine)"),
           ("mezz door", "corridor", "Mezzanine doors (corridor)"),
           ("foyer door", "foyer", "Foyer doors (all 3)")]
 
 
-# ------------------------------------------------------------------------------- measuring flow
-BUSIEST_WINDOW = 20.0      # seconds: we look for the busiest 20 s at each doorway
+BUSIEST_WINDOW = 20.0
 
 
 def busiest_flow(times):
-    """The most people that went through in any 20-second stretch, divided by 20 (people per second)."""
     times = sorted(times)
     most = 0
     start = 0
     for end in range(len(times)):
         while times[end] - times[start] >= BUSIEST_WINDOW:
-            start += 1                                     # slide the window forward
+            start += 1
         most = max(most, end - start + 1)
     return most / BUSIEST_WINDOW
 
 
 def simulated_flows(gate_times):
-    """For each kind of doorway in one run:
-      average = people through / (time of the last - time of the first)   (includes quiet moments)
-      busiest = flow in the busiest 20 s                                    (compare with our data)
-    Stairs and mezzanine doors: averaged over the doorways at least 10 people used.
-    Foyer doors: all 3 doors together, like in the data."""
     flows = {}
     for gate_kind, _, _ in PLACES:
         lists = [times for gate, times in gate_times.items() if gate.startswith(gate_kind)]
         if gate_kind == "foyer door":
-            lists = [sum(lists, [])]                       # put the 3 foyer doors together
+            lists = [sum(lists, [])]
         lists = [times for times in lists if len(times) >= 10]
         if not lists:
             flows[gate_kind] = {"average": 0.0, "busiest": 0.0}
@@ -74,12 +51,10 @@ def simulated_flows(gate_times):
     return flows
 
 
-# ------------------------------------------------------------------------------- figures
 def draw_map(hall):
-    """Picture of the grid, with the doorways that use our data in orange."""
     grid = hall["grid"].copy()
     for square in hall["gate_of_square"]:
-        grid[square] = 4                                   # colour doorways with data differently
+        grid[square] = 4
     colours = ListedColormap(["#3b3f45", "#f2efe8", "#c9d9ec", "#2e9e5b", "#e8833a"])
     extent = [sim.X_MIN, sim.X_MAX, sim.Y_MIN, sim.Y_MAX]
     fig, ax = plt.subplots(figsize=(9, 6.5))
@@ -105,11 +80,10 @@ def draw_map(hall):
 
 
 def draw_escape_times(results):
-    """One dot per run: the calculated time for the last person to get out, per case."""
     fig, ax = plt.subplots(figsize=(8.5, 4.4))
     for row, (case, colour) in enumerate(zip(sim.CASES, CASE_COLOURS)):
         times = results[case["case"]]["times"]
-        wobble = np.linspace(-0.12, 0.12, len(times))         # spread the dots a little so they don't overlap
+        wobble = np.linspace(-0.12, 0.12, len(times))
         ax.scatter(times, row + wobble, color=colour, s=22, alpha=0.8)
         mean_time = statistics.mean(times)
         ax.plot([mean_time, mean_time], [row - 0.28, row + 0.28], color="#222222", linewidth=2)
@@ -127,7 +101,6 @@ def draw_escape_times(results):
 
 
 def draw_doorway_times(results):
-    """For each doorway: average time when its last person goes through. The longest bar decides."""
     kinds = [("stair", "#9db7d5", "stairs"), ("stage", "#9db7d5", None), ("balcony", "#b8a9e0", "balcony stairs"),
              ("mezz door", "#1f4e8c", "mezzanine doors"), ("foyer door", "#e8833a", "foyer doors"),
              ("", "#2e9e5b", "exits")]
@@ -163,7 +136,6 @@ def draw_doorway_times(results):
 
 
 def draw_heatmaps(hall, results):
-    """One crowding map per case, all on the same colour scale."""
     grid = hall["grid"]
     extent = [sim.X_MIN, sim.X_MAX, sim.Y_MIN, sim.Y_MAX]
     top = max(float(results[c["case"]]["density"].max()) for c in sim.CASES)
@@ -176,7 +148,7 @@ def draw_heatmaps(hall, results):
         ax.set_xticks([])
         ax.set_yticks([])
     fig.subplots_adjust(top=0.86, right=0.9, wspace=0.05)
-    colour_bar_space = fig.add_axes([0.92, 0.15, 0.012, 0.65])      # its own strip on the right
+    colour_bar_space = fig.add_axes([0.92, 0.15, 0.012, 0.65])
     bar = fig.colorbar(picture, cax=colour_bar_space)
     bar.set_label("share of time the square was occupied")
     fig.suptitle("Where people crowd (average over all runs)", x=0.02, y=0.98, ha="left", fontsize=14, fontweight="bold")
@@ -185,7 +157,6 @@ def draw_heatmaps(hall, results):
 
 
 def draw_flow_check(results, data):
-    """Bars: measured flow in our data vs the busiest 20 s and the average in this simulation."""
     fig, axes = plt.subplots(1, 3, figsize=(13, 4))
     x = np.arange(len(sim.CASES))
     for ax, (gate_kind, data_place, title) in zip(axes, PLACES):
@@ -207,7 +178,6 @@ def draw_flow_check(results, data):
     plt.close(fig)
 
 
-# ------------------------------------------------------------------------------- main program
 def main():
     os.makedirs(OUTPUT_FOLDER, exist_ok=True)
     hall = sim.setup()
@@ -224,12 +194,11 @@ def main():
                            "flows": {kind: [] for kind, _, _ in PLACES}}
         print(f"\nCase {number}: {case['name']}")
         for run in range(NUMBER_OF_RUNS):
-            rates = sim.rates_for_run(data, case["data_case"], run)   # this run's measured flow rates
+            rates = sim.rates_for_run(data, case["data_case"], run)
             people, times_occupied, steps, gate_times = sim.run_once(run, hall, case, rates)
             out_times = [p["out_time"] for p in people if p["out_time"] is not None]
             stuck = total_people - len(out_times)
             simulated_last_out = max(out_times) if stuck == 0 else float("inf")
-            # the main result: calculated from people per doorway / flow rate, chained to the exits
             last_out, doorways = sim.calculated_escape_time(people, hall, rates)
 
             r = results[number]
@@ -254,7 +223,6 @@ def main():
                          **{f"busiest_flow_{kind.replace(' ', '_')}": round(flows[kind]["busiest"], 3) for kind in flows}})
             print(f"  run {run + 1:2d}: last person out after {last_out:6.1f} s (calculated)")
 
-    # ---- summary ----
     print("\n================ summary ================")
     for case in sim.CASES:
         r = results[case["case"]]
@@ -275,7 +243,6 @@ def main():
             average = statistics.mean(f["average"] for f in r["flows"][kind])
             print(f"  {title:34s}: data {measured:.2f} p/s | simulation busiest 20 s {busiest:.2f}, average {average:.2f} p/s")
 
-    # ---- files ----
     with open(os.path.join(OUTPUT_FOLDER, "results.csv"), "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0]))
         writer.writeheader()
