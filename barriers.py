@@ -1,29 +1,8 @@
-"""
-Question 4a: can temporary barriers in the corridor make the evacuation faster?
-
-    python barriers.py
-
-The foyer is the busiest route, so we try a barrier across the corridor next to it,
-always on both sides of the hall at once (the hall is symmetrical):
-    layout A: between mezz doors 3 and 4 (and 6 and 7 on the other side)
-    layout B: between mezz door 4 and the foyer (and between the foyer and mezz door 6)
-A barrier is just a wall: people who come out of a mezzanine door on the far side of it
-can't walk along the corridor to the foyer, so they use a side exit (or another mezzanine door).
-Everything else is the concert with Crowd Managers (80 % guided), 30 runs per layout.
-With barriers, the Crowd Managers' plan also counts the line at the mezzanine door on each person's way
-(see choose_exits). The no-barrier result is read from output/results.csv (run main.py first).
-Results: output/barriers.png, output/barrier_heatmaps.png, output/barriers.csv
-"""
 import csv
 import os
 import statistics
 
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.colors import ListedColormap
 
 import simulation as sim
 
@@ -45,11 +24,9 @@ LAYOUTS = [
     ("A: between mezz doors 3|4 and 6|7", ["mezz door 3 | 4", "mezz door 6 | 7"]),
     ("B: between mezz doors 4|5 and 5|6", ["mezz door 4 | 5", "mezz door 5 | 6"]),
 ]
-COLOURS = ["#6250d6", "#1baf7a", "#eb6834"]   # no barriers, layout A, layout B
 
 
 def no_barrier_times():
-    """The no-barrier result is not run again: we read it from main.py's output/results.csv (case 4 + CM)."""
     with open(os.path.join(OUTPUT_FOLDER, "results.csv")) as f:
         return [float(row["calculated_time_s"]) for row in csv.DictReader(f) if row["case"] == CASE["case"]]
 
@@ -103,52 +80,7 @@ def main():
         writer.writeheader()
         writer.writerows(rows)
 
-    # ---- figure 1: escape time per layout, one dot per run ----
-    fig, ax = plt.subplots(figsize=(9, 4.2))
-    everything = [{"name": "No barriers", "times": baseline}] + results
-    for row, (r, colour) in enumerate(zip(everything, COLOURS)):
-        wobble = np.linspace(-0.12, 0.12, len(r["times"]))
-        ax.scatter(r["times"], row + wobble, color=colour, s=22, alpha=0.8)
-        mean_time = statistics.mean(r["times"])
-        under = sum(1 for x in r["times"] if x <= TIME_LIMIT)
-        ax.plot([mean_time, mean_time], [row - 0.28, row + 0.28], color="#222222", linewidth=2)
-        ax.text(mean_time, row - 0.3, f"average {mean_time:.0f} s, {under}/{len(r['times'])} within 180 s",
-                ha="center", va="bottom", fontsize=9, bbox=dict(facecolor="white", edgecolor="none", pad=1))
-    ax.axvline(TIME_LIMIT, color="#c0392b", linestyle="--", linewidth=1.2)
-    ax.set_yticks(range(len(everything)), [r["name"] for r in everything])
-    ax.set_ylim(-0.75, len(everything) - 0.5)
-    ax.invert_yaxis()
-    ax.set_xlabel("seconds until the last person is out (calculated)")
-    ax.set_title("Concert with Crowd Managers: effect of corridor barriers", loc="left", fontweight="bold")
-    ax.grid(axis="x", alpha=0.3)
-    fig.savefig(os.path.join(OUTPUT_FOLDER, "barriers.png"), dpi=160, bbox_inches="tight")
-    plt.close(fig)
-
-    # ---- figure 2: where people crowd, one map per layout (barriers show up as walls) ----
-    extent = [sim.X_MIN, sim.X_MAX, sim.Y_MIN, sim.Y_MAX]
-    top = max(float(r["density"].max()) for r in results)
-    fig, axes = plt.subplots(1, len(results), figsize=(13, 4.6))
-    for ax, r in zip(axes, results):
-        grid = r["hall"]["grid"]
-        ax.imshow(grid == sim.WALL, cmap=ListedColormap(["white", "#3b3f45"]), extent=extent, interpolation="nearest")
-        picture = ax.imshow(np.ma.masked_where(grid == sim.WALL, r["density"]), cmap="YlOrRd", vmin=0, vmax=top,
-                            extent=extent, interpolation="nearest")
-        for spot in dict(LAYOUTS)[r["name"]]:          # mark the barriers in blue
-            angle = BARRIER_SPOTS[spot]
-            x1, y1 = sim.point_on_circle(sim.MEZZ_WALL_END, angle)
-            x2, y2 = sim.point_on_circle(sim.CORRIDOR_END, angle)
-            ax.plot([x1, x2], [y1, y2], color="#1f77d0", linewidth=3)
-        ax.set_title(r["name"], loc="left", fontsize=11, fontweight="bold")
-        ax.set_xticks([])
-        ax.set_yticks([])
-    fig.subplots_adjust(top=0.86, right=0.89, wspace=0.04)
-    bar = fig.colorbar(picture, cax=fig.add_axes([0.91, 0.15, 0.015, 0.65]))
-    bar.set_label("share of time the square was occupied")
-    fig.suptitle("Where people crowd with corridor barriers (blue = barrier)", x=0.02, y=0.98, ha="left",
-                 fontsize=14, fontweight="bold")
-    fig.savefig(os.path.join(OUTPUT_FOLDER, "barrier_heatmaps.png"), dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    print(f"\nsaved {OUTPUT_FOLDER}/barriers.png, barrier_heatmaps.png and barriers.csv")
+    print(f"\nsaved {OUTPUT_FOLDER}/barriers.csv")
 
 
 if __name__ == "__main__":

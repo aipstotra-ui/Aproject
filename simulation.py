@@ -1,29 +1,3 @@
-"""
-Bailey Hall evacuation - a simple grid simulation.
-
-The hall floor is cut into squares of 0.5 m x 0.5 m (about the space one person needs).
-Every 0.42 seconds each person may step to one of the 8 squares around them.
-We repeat this until everybody is out.
-
-Main rules (numbered like the code below):
-  1. Draw the hall as a grid of squares: wall, floor, seat or exit.
-  2. For every exit, count how many steps every square is away from it (a "distance map").
-  3. Put the 1,329 people in their seats and give each one a type:
-        60 % guided  - follow the ushers, who spread people over all exits
-        25 % habit   - go back the way they came in (the front foyer exit)
-        15 % nearest - go to the closest exit
-  4. Each person picks an exit.
-  5. Every time step, each person chooses a square at random, but some squares are much more
-     likely than others (see choose_square). If two people choose the same square,
-     one of them (picked at random) gets it and the others wait.
-  6. Two stuck people who face each other (each wants the other's square) swap places half of the time.
-  7. Bottlenecks use our measured data: each stair (orchestra -> mezzanine), mezzanine door and
-     foyer door has a "ticket machine" that hands out tickets at the measured flow rate.
-     You may only step into the doorway if a ticket is available.
-  8. The final time is CALCULATED (calculated_escape_time): from the doorways each person used,
-     we count the people per doorway, divide by the doorway's flow rate, and chain the doorways
-     from the seats to the exits to find when the last person is completely out.
-"""
 import csv
 import heapq
 import math
@@ -119,27 +93,23 @@ DIRECTIONS = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 
 
 # ======================================================================== small helpers
 def square_centre(row, col):
-    """Middle of a square in metres (x to the east, y to the north)."""
     x = X_MIN + (col + 0.5) * CELL
     y = Y_MAX - (row + 0.5) * CELL
     return x, y
 
 
 def square_at(x, y):
-    """The square (row, col) that contains the point (x, y)."""
     col = int((x - X_MIN) / CELL)
     row = int((Y_MAX - y) / CELL)
     return row, col
 
 
 def point_on_circle(radius, angle):
-    """Point at `radius` metres from the hall centre, at `angle` degrees (0 = west, 90 = south)."""
     a = math.radians(angle)
     return -radius * math.cos(a), -radius * math.sin(a)
 
 
 def near_opening(x, y, radius, angles, width):
-    """True if (x, y) is within half a door width of one of the openings at these angles."""
     for angle in angles:
         door_x, door_y = point_on_circle(radius, angle)
         if math.hypot(x - door_x, y - door_y) <= width / 2:
@@ -149,7 +119,6 @@ def near_opening(x, y, radius, angles, width):
 
 # ======================================================================== 1. the map
 def which_opening(x, y, radius, angles, width):
-    """Number (1, 2, ...) of the opening that (x, y) belongs to, or None."""
     for number, angle in enumerate(angles, start=1):
         if near_opening(x, y, radius, [angle], width):
             return number
@@ -157,13 +126,6 @@ def which_opening(x, y, radius, angles, width):
 
 
 def make_hall(barriers=()):
-    """Return (grid, exit_of_square, gate_of_square).
-    barriers = angles (degrees) where a temporary barrier closes the corridor (see barriers.py).
-    grid[row, col] is WALL, FLOOR, SEAT or EXIT.
-    exit_of_square[(row, col)] is the name of the exit for every EXIT square.
-    gate_of_square[(row, col)] is the name of the doorway ("gate") for every square of a
-    stair opening, mezzanine door or foyer door; these are the places we have data for.
-    stage_opening_of_square[(row, col)] marks the two openings from the orchestra to the stage passages."""
     grid = np.zeros((ROWS, COLUMNS), dtype=int)       # everything starts as wall
     exit_of_square = {}
     gate_of_square = {}
@@ -232,8 +194,6 @@ def make_hall(barriers=()):
 
 
 def neighbours(grid, row, col):
-    """Squares you can step to from (row, col). You can't step into a wall, and you can't
-    cut a corner diagonally between two walls."""
     result = []
     for d_row, d_col in DIRECTIONS:
         r2, c2 = row + d_row, col + d_col
@@ -249,7 +209,6 @@ def neighbours(grid, row, col):
 
 
 def make_neighbour_lists(grid):
-    """Work out the neighbours of every square once, so we don't repeat it every time step."""
     lists = {}
     for row in range(ROWS):
         for col in range(COLUMNS):
@@ -259,8 +218,6 @@ def make_neighbour_lists(grid):
 
 
 def door_widths(grid, exit_of_square):
-    """How many squares wide the narrowest doors on the way to each exit are (used by the ushers).
-    For the side exits that is the exit itself; for the front exit it is the 3 doors into the foyer."""
     widths = {name: 0 for name in EXIT_NAMES}
     for name in exit_of_square.values():
         if name != "FRONT":
@@ -276,8 +233,6 @@ def door_widths(grid, exit_of_square):
 
 # ======================================================================== 2. distance maps
 def distance_to_exit(grid, neighbour_lists, exit_of_square, exit_name):
-    """Steps from every square to the exit `exit_name` (a breadth-first search: start at the exit
-    and spread out one step at a time, like a wave). Squares that can't reach it get a huge number."""
     far_away = 10 ** 6
     distance = np.full((ROWS, COLUMNS), far_away)
     queue = deque()
@@ -295,10 +250,6 @@ def distance_to_exit(grid, neighbour_lists, exit_of_square, exit_name):
 
 
 def distance_with_queues(hall, exit_name, extra_cost):
-    """Like distance_to_exit, but stepping into a doorway costs extra steps: the time you would wait
-    in its queue. Because steps now cost different amounts we use Dijkstra's method: the same wave as
-    before, but we always continue from the square with the smallest distance so far (a heap keeps
-    them in order)."""
     neighbour_lists = hall["neighbours"]
     gate_of_square = hall["gate_of_square"]
     distance = np.full((ROWS, COLUMNS), float(10 ** 6))
@@ -325,7 +276,6 @@ def distance_with_queues(hall, exit_name, extra_cost):
 
 
 def queue_costs(occupied, hall, rates):
-    """For each doorway: how many time steps you would wait = people in its queue / tickets per step."""
     costs = {}
     for gate, nearby_squares in hall["gate_queue_area"].items():
         waiting = sum(occupied[square] for square in nearby_squares)
@@ -335,7 +285,6 @@ def queue_costs(occupied, hall, rates):
 
 # ======================================================================== 3. people
 def stair_landing(grid, where):
-    """The floor square where a balcony staircase arrives."""
     if isinstance(where, tuple):
         x, y = where
     else:
@@ -344,7 +293,6 @@ def stair_landing(grid, where):
 
 
 def create_people(grid, case):
-    """Make a list of people for this case. Each person is a dictionary."""
     reaction = case["reaction"]
     orchestra_seats = []
     mezzanine_seats = []
@@ -386,8 +334,6 @@ def create_people(grid, case):
 
 # ======================================================================== 4. choosing an exit
 def mezz_door_on_the_way(hall, exit_name, square):
-    """Follow the distance map downhill from `square` to the exit, and return the first mezzanine door
-    passed on the way (or None if the route doesn't use one)."""
     distance = hall["distance"][exit_name]
     gate_of_square = hall["gate_of_square"]
     while distance[square] > 0:
@@ -399,7 +345,6 @@ def mezz_door_on_the_way(hall, exit_name, square):
 
 
 def choose_exits(people, hall, rates):
-    """Give every person an exit to head for."""
     distance = hall["distance"]
     widths = hall["widths"]
 
@@ -451,7 +396,6 @@ def choose_exits(people, hall, rates):
 
 # ======================================================================== 5. moving
 def count_crowd(occupied):
-    """For every square: how many of its 8 neighbours are occupied."""
     padded = np.pad(occupied, 1)
     crowd = np.zeros((ROWS, COLUMNS), dtype=int)
     for d_row, d_col in DIRECTIONS:
@@ -460,13 +404,6 @@ def count_crowd(occupied):
 
 
 def choose_square(person, distance, neighbour_lists, occupied, crowd):
-    """Pick the square this person wants to step to (or stay where they are).
-
-    Every free option gets a weight:
-        weight = exp( - PULL x (change in distance to the exit)  -  CROWD x (crowded neighbours) )
-    A step 1 square closer gets about e^3 = 20 times the weight of a step that keeps the same distance;
-    a step away gets about 1/20. Crowded squares get less weight. Then we pick one option at random,
-    with chances in proportion to the weights (this is the probability rule)."""
     here = person["square"]
     dist = distance[person["exit"]]
     options = [here]                                       # staying put is always an option
@@ -483,7 +420,6 @@ def choose_square(person, distance, neighbour_lists, occupied, crowd):
 
 # ======================================================================== 6. our measured data
 def load_flow_data():
-    """Read the three data files into {place: {case number: [rows]}}, rows sorted by run number."""
     data = {}
     for place, file_name in DATA_FILES.items():
         data[place] = {}
@@ -496,9 +432,6 @@ def load_flow_data():
 
 
 def rates_for_run(data, case_number, run):
-    """Flow rates (people per second) for one run, taken from row `run` of each data file.
-    Every stair and every mezzanine door gets the measured rate. The foyer's total rate is split over
-    its 3 doors in the same proportions as the data's door counts."""
     stairs = data["stairs"][case_number][run % len(data["stairs"][case_number])]
     corridor = data["corridor"][case_number][run % len(data["corridor"][case_number])]
     foyer = data["foyer"][case_number][run % len(data["foyer"][case_number])]
@@ -513,7 +446,6 @@ def rates_for_run(data, case_number, run):
 
 
 def gate_rate(gate, rates):
-    """The flow rate of one gate, e.g. gate = "foyer door 2"."""
     if gate.startswith("foyer door"):
         number = int(gate.split()[-1])
         return rates["foyer door"][number - 1]
@@ -523,18 +455,12 @@ def gate_rate(gate, rates):
 
 
 def doorway_rate(doorway, rates):
-    """Flow rate (people per second) of any doorway: from our data if we have it,
-    otherwise the mezzanine doors' rate per metre x the doorway's width."""
     if doorway in NO_DATA_WIDTHS:
         return rates["per metre"] * NO_DATA_WIDTHS[doorway]
     return gate_rate(doorway, rates)
 
 
 def swap_stuck_pairs(ready, moved, route_maps, neighbour_lists, gate_of_square, tickets, gate_times, time):
-    """People who could not move look at their favourite square (the neighbour closest to their exit,
-    even if someone stands there). If two of them want each other's square, they swap with
-    SWAP_CHANCE. Without this, two streams walking in opposite directions can block each other forever.
-    Swapping INTO a doorway still needs a ticket, so the ticket machines still decide who goes through."""
     stuck_at = {}                                          # square -> stuck person standing there
     for person in ready:
         if id(person) not in moved and person["out_time"] is None:
@@ -567,9 +493,6 @@ def swap_stuck_pairs(ready, moved, route_maps, neighbour_lists, gate_of_square, 
 
 
 def run_once(seed, hall, case, rates):
-    """Simulate one evacuation. `hall` comes from setup(), `case` from CASES, `rates` from rates_for_run().
-    Returns (people, how many time steps each square was occupied, number of time steps, gate times).
-    gate times = {gate: list of the times at which someone went through that doorway}"""
     grid = hall["grid"]
     exit_of_square = hall["exit_of_square"]
     gate_of_square = hall["gate_of_square"]
@@ -680,9 +603,6 @@ def run_once(seed, hall, case, rates):
 
 
 def setup(barriers=()):
-    """Build everything that is the same in every run: the map, neighbours, door widths and
-    distance maps. Returns them together in one dictionary.
-    barriers = angles of temporary barriers in the corridor (none by default)."""
     grid, exit_of_square, gate_of_square, stage_opening_of_square = make_hall(barriers)
     neighbour_lists = make_neighbour_lists(grid)
     distance = {}
@@ -724,7 +644,6 @@ def setup(barriers=()):
 
 # ======================================================================== 8. calculated escape time
 def distance_from_squares(neighbour_lists, start_squares):
-    """Steps from every square to the nearest of `start_squares` (the same wave as distance_to_exit)."""
     far_away = 10 ** 6
     distance = np.full((ROWS, COLUMNS), far_away)
     queue = deque()
@@ -741,7 +660,6 @@ def distance_from_squares(neighbour_lists, start_squares):
 
 
 def doorway_level(doorway):
-    """How far out a doorway is: 1 = first doorway after the seats, ..., 4 = exits."""
     if doorway.startswith(("stair", "stage", "balcony")):
         return 1
     if doorway.startswith("mezz door"):
@@ -752,19 +670,6 @@ def doorway_level(doorway):
 
 
 def calculated_escape_time(people, hall, rates):
-    """The time until the last person is completely out of the building, calculated from:
-       * how many people went through each doorway (counted in the simulation)
-       * each doorway's flow rate (our data, or rate per metre x width)
-       * walking times between doorways
-    We go from the seats outwards. For every doorway:
-       earliest = when the first people can reach it
-       finish   = the later of
-                    earliest + people / rate          (everyone squeezing through at the doorway's rate)
-                    when the last person reaches it   (they can't pass before they arrive)
-       People reach a doorway either straight from their seat (start time + walk), or through the
-       doorway before it (that doorway's times + the walk between the two).
-    The answer is the latest finish of any exit.
-    Returns (time in seconds, details per doorway)."""
     distance = hall["doorway_distance"]
     squares = hall["doorway_squares"]
 

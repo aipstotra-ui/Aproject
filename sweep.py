@@ -1,20 +1,6 @@
-"""
-How much does it help when more people follow the ushers / Crowd Managers?
-
-    python sweep.py
-
-We run the concert emergency (case 4 data) with 60 %, 70 %, 80 %, 90 % and 100 % of people guided.
-The people who are NOT guided are split like in the normal concert: 25 : 15 between habit and nearest.
-Results: output/guided_sweep.png and output/guided_sweep.csv
-"""
 import csv
 import os
 import statistics
-
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 
 import simulation as sim
 
@@ -52,26 +38,7 @@ def main():
         writer.writeheader()
         writer.writerows(rows)
 
-    # ---- figure: escape time against % guided ----
-    fig, ax = plt.subplots(figsize=(7.5, 4.5))
-    xs = [100 * g for g, _, _, _ in summary]
-    for g in GUIDED_SHARES:                                   # every run as a faint dot
-        ys = [r["calculated_time_s"] for r in rows if r["guided"] == g]
-        ax.scatter([100 * g] * len(ys), ys, color="#6250d6", alpha=0.18, s=14, linewidths=0)
-    ax.errorbar(xs, [m for _, m, _, _ in summary], yerr=[s for _, _, s, _ in summary],
-                color="#6250d6", marker="o", capsize=4, lw=2, label="average ± spread (30 runs)")
-    ax.axhline(TIME_LIMIT, color="#d03b3b", ls="--", lw=1.2, label=f"{TIME_LIMIT} s limit")
-    for x, (_, m, _, under) in zip(xs, summary):
-        ax.annotate(f"{under}/{NUMBER_OF_RUNS}", (x, m), textcoords="offset points", xytext=(8, 8), fontsize=9)
-    ax.set_xticks(xs, [f"{x:.0f} %" for x in xs])
-    ax.set_xlabel("people who follow the ushers / Crowd Managers")
-    ax.set_ylabel("last person out (s, calculated)")
-    ax.set_title("Concert emergency: the more people follow the plan, the faster")
-    ax.legend(frameon=False, loc="upper right")
-    ax.spines[["top", "right"]].set_visible(False)
-    fig.savefig(os.path.join(OUTPUT_FOLDER, "guided_sweep.png"), dpi=160, bbox_inches="tight")
-    plt.close(fig)
-    print(f"saved {OUTPUT_FOLDER}/guided_sweep.png and guided_sweep.csv")
+    print(f"saved {OUTPUT_FOLDER}/guided_sweep.csv")
 
 
 if __name__ == "__main__":
