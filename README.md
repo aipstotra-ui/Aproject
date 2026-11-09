@@ -36,6 +36,7 @@ It takes about 3–4 minutes. The results go into the `output/` folder.
 | `simulation.py` | The model: the map, distances, people, choosing an exit, moving step by step, and the doorway limits from our data. |
 | `main.py` | Runs each case 30 times, prints a summary and draws the figures. |
 | `barriers.py` | Question 4a: corridor barriers, 2 layouts × 30 runs (about 6 minutes). |
+| `leds.py` | Question 4b: one run with 100% guided, coloured into LED sections. |
 | `sweep.py` | Runs the concert with 60%, 70%, 80%, 90% and 100% guided (about 9 minutes). |
 | `data/` | Our measured bottleneck data: `stairs.csv`, `corridor.csv`, `foyer_doors.csv`. |
 | `output/` | `map.png`, `escape_time.png`, `doorway_times.png`, `heatmap.png`, `flow_check.png`, `results.csv`, `guided_sweep.png`, `guided_sweep.csv` |
@@ -311,6 +312,25 @@ Without this, the plan kept sending about 470 people to the front through the si
 - **Layout A helps on average** (12 s faster, 2 more runs within 180 s). It moves about 150 people from the foyer to the stage-side exits NW and NE.
 - **Layout A is much less predictable**: from 123 s to 236 s. NW and NE now carry about 200 people each, and their speed follows the run's mezzanine-door flow rate, which varies a lot in the concert data (0.67–1.19 people/s). Fast-flow runs get much faster, and slow-flow runs get much slower.
 - **Layout B makes things worse.** Only mezz door 5 is left open between the mezzanine and the foyer, so the dark red queue in front of it decides the time. The balcony stairs also land on the cut-off side.
+
+## Question 4b: where should the LED strips point? (`python leds.py`)
+
+We ran the concert **once** with 100% guided people (perfect guidance) and coloured every seat by the exit the Crowd Managers' plan sent it to.
+To get clean sections, as real LED strips would need, each seat takes the exit used by most people within 2 m of it.
+The strips in each coloured area point to that exit.
+
+![LED map](output/led_map.png)
+
+| Area | FRONT | NW | NE | P1 | P2 | P3 | P4 |
+|---|---|---|---|---|---|---|---|
+| Orchestra (527) | 182 | 45 | 43 | 67 | 63 | 62 | 65 |
+| Mezzanine (486) | 174 | 38 | 38 | 83 | 35 | 34 | 84 |
+| Balcony NW / NE stairs (66 each) | | 66 | 66 | | | | |
+| Balcony W / E foyer stairs (92 each) | 88 + 88 | | | | 4 | 4 | |
+
+- **The middle third of the hall, nearest the foyer, goes to the FRONT.** The rest fans out to the side exits, each side exit getting a wedge of the orchestra and mezzanine that leads straight to it.
+- **Balcony:** the two stage-side stairs go to NW / NE, and the two foyer-side stairs go to the FRONT.
+- **Time with perfect guidance:** 157.5 s on average over 30 runs (from `sweep.py`, 100% guided), with all 30 runs within 180 s. This single run took 141 s.
 
 ## Simplifications
 
