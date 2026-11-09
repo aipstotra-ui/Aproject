@@ -10,6 +10,8 @@ always on both sides of the hall at once (the hall is symmetrical):
 A barrier is just a wall: people who come out of a mezzanine door on the far side of it
 can't walk along the corridor to the foyer, so they use a side exit (or another mezzanine door).
 Everything else is the concert with Crowd Managers (80 % guided), 30 runs per layout.
+With barriers, the Crowd Managers' plan also counts the line at the mezzanine door on each person's way
+(see choose_exits). The no-barrier result is read from output/results.csv (run main.py first).
 Results: output/barriers.png, output/barrier_heatmaps.png, output/barriers.csv
 """
 import csv
@@ -40,11 +42,16 @@ BARRIER_SPOTS = {
     "mezz door 5 | 6": 105,    #   doors 4 and 5 (80) would be ON foyer door 1, so it can't go there
 }
 LAYOUTS = [
-    ("No barriers", []),
     ("A: between mezz doors 3|4 and 6|7", ["mezz door 3 | 4", "mezz door 6 | 7"]),
     ("B: between mezz doors 4|5 and 5|6", ["mezz door 4 | 5", "mezz door 5 | 6"]),
 ]
-COLOURS = ["#6250d6", "#1baf7a", "#eb6834"]
+COLOURS = ["#6250d6", "#1baf7a", "#eb6834"]   # no barriers, layout A, layout B
+
+
+def no_barrier_times():
+    """The no-barrier result is not run again: we read it from main.py's output/results.csv (case 4 + CM)."""
+    with open(os.path.join(OUTPUT_FOLDER, "results.csv")) as f:
+        return [float(row["calculated_time_s"]) for row in csv.DictReader(f) if row["case"] == CASE["case"]]
 
 
 def main():
@@ -77,7 +84,10 @@ def main():
                          "finish": {d: statistics.mean(v) for d, v in finish.items()}})
 
     # ---- summary ----
+    baseline = no_barrier_times()
     print("\n================ summary ================")
+    print(f"\nNo barriers (from results.csv): {statistics.mean(baseline):.1f} s +- {statistics.stdev(baseline):.1f},"
+          f" within {TIME_LIMIT} s in {sum(1 for x in baseline if x <= TIME_LIMIT)}/{len(baseline)}")
     for r in results:
         t = r["times"]
         under = sum(1 for x in t if x <= TIME_LIMIT)
@@ -94,18 +104,19 @@ def main():
         writer.writerows(rows)
 
     # ---- figure 1: escape time per layout, one dot per run ----
-    fig, ax = plt.subplots(figsize=(8.5, 3.8))
-    for row, (r, colour) in enumerate(zip(results, COLOURS)):
+    fig, ax = plt.subplots(figsize=(9, 4.2))
+    everything = [{"name": "No barriers", "times": baseline}] + results
+    for row, (r, colour) in enumerate(zip(everything, COLOURS)):
         wobble = np.linspace(-0.12, 0.12, len(r["times"]))
         ax.scatter(r["times"], row + wobble, color=colour, s=22, alpha=0.8)
         mean_time = statistics.mean(r["times"])
         under = sum(1 for x in r["times"] if x <= TIME_LIMIT)
         ax.plot([mean_time, mean_time], [row - 0.28, row + 0.28], color="#222222", linewidth=2)
-        ax.text(mean_time, row + 0.33, f"average {mean_time:.0f} s, {under}/{NUMBER_OF_RUNS} within 180 s",
-                ha="center", fontsize=9)
+        ax.text(mean_time, row - 0.3, f"average {mean_time:.0f} s, {under}/{len(r['times'])} within 180 s",
+                ha="center", va="bottom", fontsize=9, bbox=dict(facecolor="white", edgecolor="none", pad=1))
     ax.axvline(TIME_LIMIT, color="#c0392b", linestyle="--", linewidth=1.2)
-    ax.set_yticks(range(len(results)), [r["name"] for r in results])
-    ax.set_ylim(-0.6, len(results) - 0.3)
+    ax.set_yticks(range(len(everything)), [r["name"] for r in everything])
+    ax.set_ylim(-0.75, len(everything) - 0.5)
     ax.invert_yaxis()
     ax.set_xlabel("seconds until the last person is out (calculated)")
     ax.set_title("Concert with Crowd Managers: effect of corridor barriers", loc="left", fontweight="bold")
@@ -116,7 +127,7 @@ def main():
     # ---- figure 2: where people crowd, one map per layout (barriers show up as walls) ----
     extent = [sim.X_MIN, sim.X_MAX, sim.Y_MIN, sim.Y_MAX]
     top = max(float(r["density"].max()) for r in results)
-    fig, axes = plt.subplots(1, len(results), figsize=(20, 4.6))
+    fig, axes = plt.subplots(1, len(results), figsize=(13, 4.6))
     for ax, r in zip(axes, results):
         grid = r["hall"]["grid"]
         ax.imshow(grid == sim.WALL, cmap=ListedColormap(["white", "#3b3f45"]), extent=extent, interpolation="nearest")
@@ -130,10 +141,10 @@ def main():
         ax.set_title(r["name"], loc="left", fontsize=11, fontweight="bold")
         ax.set_xticks([])
         ax.set_yticks([])
-    fig.subplots_adjust(top=0.86, right=0.9, wspace=0.05)
-    bar = fig.colorbar(picture, cax=fig.add_axes([0.92, 0.15, 0.012, 0.65]))
+    fig.subplots_adjust(top=0.86, right=0.89, wspace=0.04)
+    bar = fig.colorbar(picture, cax=fig.add_axes([0.91, 0.15, 0.015, 0.65]))
     bar.set_label("share of time the square was occupied")
-    fig.suptitle("Where people crowd with and without barriers (blue = barrier)", x=0.02, y=0.98, ha="left",
+    fig.suptitle("Where people crowd with corridor barriers (blue = barrier)", x=0.02, y=0.98, ha="left",
                  fontsize=14, fontweight="bold")
     fig.savefig(os.path.join(OUTPUT_FOLDER, "barrier_heatmaps.png"), dpi=150, bbox_inches="tight")
     plt.close(fig)

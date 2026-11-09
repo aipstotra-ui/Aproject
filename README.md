@@ -35,6 +35,7 @@ It takes about 3–4 minutes. The results go into the `output/` folder.
 |---|---|
 | `simulation.py` | The model: the map, distances, people, choosing an exit, moving step by step, and the doorway limits from our data. |
 | `main.py` | Runs each case 30 times, prints a summary and draws the figures. |
+| `barriers.py` | Question 4a: corridor barriers, 2 layouts × 30 runs (about 6 minutes). |
 | `sweep.py` | Runs the concert with 60%, 70%, 80%, 90% and 100% guided (about 9 minutes). |
 | `data/` | Our measured bottleneck data: `stairs.csv`, `corridor.csv`, `foyer_doors.csv`. |
 | `output/` | `map.png`, `escape_time.png`, `doorway_times.png`, `heatmap.png`, `flow_check.png`, `results.csv`, `guided_sweep.png`, `guided_sweep.csv` |
@@ -276,6 +277,40 @@ The share of people who follow Crowd Managers is a guess, so we ran the concert 
 - Every extra 10% of people who follow the plan saves about **8 s**.
 - The **average** drops below 180 s from about 75% guided, but **every** run makes it only at 100%.
 - So Crowd Managers alone help, but they aren't enough on their own: Question 4 (barriers and LEDs) has to close the remaining gap.
+
+## Question 4a: barriers in the corridor (`python barriers.py`)
+
+We put a barrier (a 1 m wall) across the corridor next to the foyer, always on both sides of the hall.
+People coming out of a mezzanine door on the far side of a barrier can't walk to the foyer along the corridor.
+
+- **Layout A:** between mezz doors 3 and 4 (and 6 and 7).
+- **Layout B:** between mezz door 4 and the foyer (and between the foyer and mezz door 6). It can't sit exactly halfway between doors 4 and 5, because foyer door 1 is there.
+
+Setting: concert with Crowd Managers (80% guided), 30 runs per layout. The no-barrier result is read from `output/results.csv` and isn't run again.
+
+**The Crowd Managers' plan with barriers:** with barriers, the plan also counts the line at the mezzanine door on each person's way:
+
+`time = walk + the longer of (line at the exit, line at the mezzanine door)`
+
+It includes the habit and nearest people, whose routes the Crowd Managers can predict.
+Without this, the plan kept sending about 470 people to the front through the single mezzanine door left open to the foyer, and layout B took about 480 s.
+**Note:** the no-barrier case still uses the old plan, so part of the gain below may come from the smarter plan and not the barriers alone.
+
+| | No barriers | Layout A (3\|4 and 6\|7) | Layout B (4\|5 and 5\|6) |
+|---|---|---|---|
+| **Calculated time** | **175 s ± 13** | **163 s ± 31** | **208 s ± 28** |
+| Fastest / slowest run | 155 s / 206 s | 123 s / 236 s | 169 s / 279 s |
+| Runs within 180 s | 21 of 30 | **23 of 30** | 3 of 30 |
+| People out the FRONT | 587 | 436 | 167 |
+| People out NW + NE | 254 | 402 | 463 |
+
+![barriers](output/barriers.png)
+
+![barrier heat maps](output/barrier_heatmaps.png)
+
+- **Layout A helps on average** (12 s faster, 2 more runs within 180 s). It moves about 150 people from the foyer to the stage-side exits NW and NE.
+- **Layout A is much less predictable**: from 123 s to 236 s. NW and NE now carry about 200 people each, and their speed follows the run's mezzanine-door flow rate, which varies a lot in the concert data (0.67–1.19 people/s). Fast-flow runs get much faster, and slow-flow runs get much slower.
+- **Layout B makes things worse.** Only mezz door 5 is left open between the mezzanine and the foyer, so the dark red queue in front of it decides the time. The balcony stairs also land on the cut-off side.
 
 ## Simplifications
 

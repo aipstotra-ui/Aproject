@@ -385,13 +385,30 @@ def create_people(grid, case):
 
 
 # ======================================================================== 4. choosing an exit
-def choose_exits(people, distance, widths):
+def mezz_door_on_the_way(hall, exit_name, square):
+    """Follow the distance map downhill from `square` to the exit, and return the first mezzanine door
+    passed on the way (or None if the route doesn't use one)."""
+    distance = hall["distance"][exit_name]
+    gate_of_square = hall["gate_of_square"]
+    while distance[square] > 0:
+        square = min(hall["neighbours"][square], key=lambda nxt: distance[nxt])   # one step closer
+        gate = gate_of_square.get(square, "")
+        if gate.startswith("mezz door"):
+            return gate
+    return None
+
+
+def choose_exits(people, hall, rates):
     """Give every person an exit to head for."""
+    distance = hall["distance"]
+    widths = hall["widths"]
+
     # where each person starts walking from: their seat, or the bottom of their staircase
     def start_square(person):
         return person["square"] if person["stair"] is None else person["stair"]
 
     sent_by_ushers = {name: 0 for name in EXIT_NAMES}
+    sent_through_door = {}                     # mezzanine door -> people the ushers already sent through it
     guided = [p for p in people if p["type"] == "guided"]
     random.shuffle(guided)
 
@@ -403,17 +420,33 @@ def choose_exits(people, distance, widths):
             person["exit"] = min(EXIT_NAMES, key=lambda name: distance[name][here])
 
     # the ushers spread people out: each guided person goes where they would get out soonest,
-    # counting the people the ushers have already sent there
+    # counting the people the ushers have already sent there.
+    # With barriers in the corridor, the ushers ALSO count the line at the mezzanine door on the way:
+    #     time = walk + the longer of (line at the exit, line at the mezzanine door)
+    door_tickets_per_step = rates["mezz door"] * TIME_STEP
+    if hall["barriers"]:                   # the ushers know where the people who don't listen will go
+        for person in people:
+            if person["type"] != "guided":
+                door = mezz_door_on_the_way(hall, person["exit"], start_square(person))
+                if door is not None:
+                    sent_through_door[door] = sent_through_door.get(door, 0) + 1
     for person in guided:
         here = start_square(person)
-        best_exit, best_time = None, None
+        best_exit, best_time, best_door = None, None, None
         for name in EXIT_NAMES:
             walk = distance[name][here]
             wait = sent_by_ushers[name] / (widths[name] * DOOR_FLOW)
+            door = None
+            if hall["barriers"]:
+                door = mezz_door_on_the_way(hall, name, here)
+                if door is not None:
+                    wait = max(wait, sent_through_door.get(door, 0) / door_tickets_per_step)
             if best_time is None or walk + wait < best_time:
-                best_exit, best_time = name, walk + wait
+                best_exit, best_time, best_door = name, walk + wait, door
         person["exit"] = best_exit
         sent_by_ushers[best_exit] += 1
+        if best_door is not None:
+            sent_through_door[best_door] = sent_through_door.get(best_door, 0) + 1
 
 
 # ======================================================================== 5. moving
@@ -546,7 +579,7 @@ def run_once(seed, hall, case, rates):
 
     random.seed(seed)                                      # same seed -> exactly the same run
     people = create_people(grid, case)
-    choose_exits(people, distance, hall["widths"])
+    choose_exits(people, hall, rates)
 
     # one ticket machine per gate, plus one per balcony staircase
     gates = sorted(set(gate_of_square.values()))
@@ -682,7 +715,7 @@ def setup(barriers=()):
     for name, squares in doorway_squares.items():
         doorway_distance[name] = distance_from_squares(neighbour_lists, squares)
 
-    return {"grid": grid, "exit_of_square": exit_of_square, "gate_of_square": gate_of_square,
+    return {"grid": grid, "barriers": list(barriers), "exit_of_square": exit_of_square, "gate_of_square": gate_of_square,
             "stage_opening_of_square": stage_opening_of_square,
             "neighbours": neighbour_lists, "distance": distance, "widths": door_widths(grid, exit_of_square),
             "gate_queue_area": gate_queue_area, "doorway_squares": doorway_squares,
