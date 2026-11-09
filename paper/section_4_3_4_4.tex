@@ -1,0 +1,119 @@
+\subsection{Optimizing Barrier Placements}
+For the purpose of this section, it is first important to acknowledge that the temporary barriers can only break off access of a full door, meaning all the flow out of a mezzanine door is blocked off from a certain area. In our model, a barrier is a 1 m thick wall that closes the corridor between two neighboring doors. People who come out of a mezzanine door on the far side of a barrier can no longer walk along the corridor to the foyer, so they have to use a side exit or go back to another mezzanine door.
+
+The route selection model showed that the foyer route decides the evacuation time, and that the mezzanine doors next to the foyer are the most crowded. We therefore placed the barriers next to the foyer. Since the hall is symmetrical, every barrier is placed on both sides of the hall at once. We tested two layouts:
+\begin{itemize}
+    \item \textbf{Layout A:} between mezzanine doors 3 and 4, and between doors 6 and 7,
+    \item \textbf{Layout B:} between mezzanine door 4 and the foyer, and between the foyer and mezzanine door 6.
+\end{itemize}
+In layout B, the barrier cannot be placed exactly halfway between mezzanine doors 4 and 5, because the first foyer door is there. It is placed between door 4 and the first foyer door instead.
+
+We kept the concert with Crowd Managers (80\% guided) from the previous section and ran each layout 30 times. When the Crowd Managers set up barriers, they should also know where the barriers send people. We therefore let the Crowd Managers' plan count the line at the mezzanine door on each person's way, not only the line at the exit:
+\begin{equation}
+    t = t_{walk} + \max\left( t_{exit}, \; t_{door} \right),
+\end{equation}
+where $t_{walk}$ is the walking time to the exit, $t_{exit}$ is the waiting time at the exit, and $t_{door}$ is the waiting time at the mezzanine door on the way. Each guided person is sent to the exit with the smallest $t$. The Crowd Managers also count the habit and nearest people, since they can predict where these people go. Without this change, the Crowd Managers kept sending about 470 people to the FRONT exit through the one mezzanine door left open to the foyer in layout B, which took about 480 s.
+
+\begin{table}[H]
+    \centering
+    \small
+    \caption{Evacuation time $T$ with and without corridor barriers (concert with Crowd Managers, 30 runs each)}
+    \begin{tabular}{l|c|c|c|c}
+        \toprule
+        Layout & Mean $T$ & Std.\ dev. & Fastest / slowest & Runs under 180 s \\
+        \midrule
+        No barriers & 175.0 s & 13.4 s & 155.1 s / 205.7 s & 21 / 30 \\
+        Layout A (doors 3|4 and 6|7) & 163.3 s & 31.4 s & 122.5 s / 236.2 s & 23 / 30 \\
+        Layout B (doors 4|5 and 5|6) & 208.3 s & 27.8 s & 168.8 s / 279.4 s & 3 / 30 \\
+        \bottomrule
+    \end{tabular}
+    \label{tab:barriers}
+\end{table}
+
+\begin{figure}[H]
+\centering
+  \includegraphics[height=5.5cm]{barriers.png}
+  \caption{Evacuation time of every run with and without barriers. The dashed line is the 180 s limit}
+  \label{fig:barriers}
+\end{figure}
+
+\begin{table}[H]
+    \centering
+    \small
+    \caption{Average number of people leaving through each exit with barriers}
+    \begin{tabular}{l|ccccccc}
+        \toprule
+        Layout & FRONT & NW & NE & P1 & P2 & P3 & P4 \\
+        \midrule
+        No barriers & 587 & 127 & 127 & 131 & 114 & 114 & 129 \\
+        Layout A & 436 & 203 & 199 & 142 & 112 & 105 & 133 \\
+        Layout B & 167 & 232 & 231 & 193 & 160 & 158 & 188 \\
+        \bottomrule
+    \end{tabular}
+    \label{tab:barrierexits}
+\end{table}
+
+Layout A makes the evacuation 12 s faster on average, and 23 of the 30 runs meet the 180 s limit instead of 21. The barriers move about 150 people away from the FRONT exit to the side exits next to the stage, NW and NE (Table \ref{tab:barrierexits}). However, layout A also makes the result much less predictable: the evacuation time ranges from 123 s to 236 s. With the barriers, NW and NE each carry about 200 people, and their flow rate depends on the flow rate of the mezzanine door in each run, which varies a lot for concert audiences (0.67--1.19 people/s, Table \ref{tab:stats}). In runs with a fast flow, the hall empties much faster than without barriers, but in runs with a slow flow, the side exits become the new bottleneck.
+
+Layout B makes the evacuation slower: only 3 of the 30 runs meet the limit. With these barriers, mezzanine door 5 is the only way from the mezzanine to the foyer. Even though the Crowd Managers send most people to the side exits, the habit group still heads for the FRONT exit, and all of them squeeze through this one door. The balcony stairs on the foyer side also land on the cut-off side of the barriers, so the balcony audience loses its short way to the foyer.
+
+\begin{figure}[H]
+\centering
+  \includegraphics[width=\textwidth]{barrier_heatmaps.png}
+  \caption{Share of time each square was occupied with barriers (blue), averaged over 30 runs}
+  \label{fig:barrierheat}
+\end{figure}
+
+The heat maps in Figure \ref{fig:barrierheat} show this difference. In layout A, the queues are split between mezzanine doors 4 and 6 and the corridor in front of the foyer. In layout B, a single dark red queue forms in front of mezzanine door 5. Therefore, barriers can decrease the egress time safely only when they send people to the side exits without cutting too many mezzanine doors off from the foyer. We recommend layout A, but it should be combined with clear guidance at the stage side exits, since these exits now carry twice as many people.
+
+Note that the case without barriers still uses the original plan of the Crowd Managers, which does not count the line at the mezzanine doors. Part of the improvement of layout A may therefore come from the improved plan rather than the barriers alone.
+
+\subsection{LED Guidance Strips}
+Directional LED strips on the floors or walls guide each part of the audience to a specific exit. Unlike Crowd Managers, LED strips are visible to everyone in the hall, but they cannot change direction during an evacuation. The question is therefore which exit each part of the hall should be guided to.
+
+To find the best direction for each section, we ran the concert once with perfect guidance, where 100\% of the audience follows the plan of the Crowd Managers. We then colored every seat by the exit its person was sent to. Since the plan sends people one at a time, neighboring seats are sometimes sent to different exits. To get clean sections, as real LED strips would need, each seat takes the exit used by most people within 2 m of it. The colored areas are the LED sections, and the strips in each section point to its exit.
+
+\begin{figure}[H]
+\centering
+  \includegraphics[height=9cm]{led_map.png}
+  \caption{LED sections: every seat colored by the exit its section should be guided to}
+  \label{fig:ledmap}
+\end{figure}
+
+\begin{table}[H]
+    \centering
+    \small
+    \caption{Number of people guided to each exit with perfect guidance (one run)}
+    \begin{tabular}{l|ccccccc}
+        \toprule
+        Area & FRONT & NW & NE & P1 & P2 & P3 & P4 \\
+        \midrule
+        Orchestra (527) & 182 & 45 & 43 & 67 & 63 & 62 & 65 \\
+        Mezzanine (486) & 174 & 38 & 38 & 83 & 35 & 34 & 84 \\
+        Balcony, stage side stairs (2 $\times$ 66) & -- & 66 & 66 & -- & -- & -- & -- \\
+        Balcony, foyer side stairs (2 $\times$ 92) & 176 & -- & -- & -- & 4 & 4 & -- \\
+        \bottomrule
+    \end{tabular}
+    \label{tab:led}
+\end{table}
+
+Figure \ref{fig:ledmap} shows that the middle part of the hall, the area closest to the foyer, should be guided to the FRONT exit. The rest of the hall fans out in wedges, and each side exit receives the slice of seats that leads straight to it: the outer mezzanine goes to P1 and P4, the inner slices go to P2 and P3, and the rows near the stage go to NW and NE. On the balcony, the two stairs next to the stage lead to NW and NE, while the two stairs next to the foyer lead to the FRONT exit. Since the hall is symmetrical, the LED plan is the same on both sides, which makes it simple to install.
+
+\begin{table}[H]
+    \centering
+    \small
+    \caption{Evacuation time $T$ of the concert under different guidance (30 runs each)}
+    \begin{tabular}{l|c|c|c}
+        \toprule
+        Guidance & People guided & Mean $T$ & Runs under 180 s \\
+        \midrule
+        No Crowd Managers & 60\% & 189.6 s & 11 / 30 \\
+        Crowd Managers & 80\% & 175.0 s & 21 / 30 \\
+        Crowd Managers and LED strips & 90\% & 166.3 s & 24 / 30 \\
+        Perfect guidance & 100\% & 157.5 s & 30 / 30 \\
+        \bottomrule
+    \end{tabular}
+    \label{tab:ledtime}
+\end{table}
+
+With perfect guidance, the evacuation takes 157.5 s on average over 30 runs, and every run meets the 180 s limit (Table \ref{tab:ledtime}). This is 18 s faster than with Crowd Managers alone. In reality, not everyone will follow the lights, so we consider 90\% guidance as a more cautious estimate: the evacuation then takes 166.3 s, and 24 of the 30 runs meet the limit. In both cases, the LED strips decrease the egress time more than the barriers do, and they do so without blocking any path. Since nothing is closed off, people can still choose another exit if their exit becomes blocked, which makes the LED strips the safer option.
